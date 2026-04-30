@@ -1,0 +1,12 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/main.gd" id="1_main_script"]
+[ext_resource type="PackedScene" path="res://scenes/track.tscn" id="2_track"]
+[ext_resource type="PackedScene" path="res://ui/hud.tscn" id="3_hud"]
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1_main_script")
+
+[node name="Track" parent="." instance=ExtResource("2_track")]
+
+[node name="HUD" parent="." instance=ExtResource("3_hud")]

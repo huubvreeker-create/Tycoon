@@ -1,0 +1,17 @@
+# Godot 4 ignore patterns
+.godot/
+.import/
+export.cfg
+export_presets.cfg
+
+# Imported translations (auto-generated)
+*.translation
+
+# Mono / C# build files (unused but safe to ignore)
+.mono/
+data_*/
+mono_crash.*.json
+
+# OS junk
+.DS_Store
+Thumbs.db
