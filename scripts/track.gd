@@ -73,20 +73,28 @@ func _spawn_initial_karts() -> void:
 
 
 # --- Rendering --------------------------------------------------------------
+# We draw each segment with draw_line (not draw_polyline) because the
+# GL Compatibility renderer ignores polyline width on many drivers — the
+# track would render as a 1-pixel hairline. draw_line builds quad geometry
+# per segment so thick lines are reliable.
 func _draw() -> void:
 	if path == null or path.curve == null:
+		push_warning("Track: path or curve missing in _draw()")
 		return
 	var pts := path.curve.get_baked_points()
 	if pts.size() < 2:
+		push_warning("Track: curve produced no baked points")
 		return
 
-	# Outer rumble strip (neon)
-	draw_polyline(pts, rumble_color, asphalt_width + 10.0, true)
-	# Asphalt surface
-	draw_polyline(pts, asphalt_color, asphalt_width, true)
-	# Dashed racing line down the middle
+	# Outer rumble strip (drawn first, slightly wider, so it shows as an edge).
+	for i in range(pts.size() - 1):
+		draw_line(pts[i], pts[i + 1], rumble_color, asphalt_width + 8.0, false)
+	# Asphalt surface on top.
+	for i in range(pts.size() - 1):
+		draw_line(pts[i], pts[i + 1], asphalt_color, asphalt_width, false)
+	# Dashed racing line down the middle.
 	_draw_dashed_polyline(pts, racing_line_color, 2.0, 18.0, 14.0)
-	# Start / finish line
+	# Start / finish line.
 	_draw_start_line(pts)
 
 
