@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main_script"]
 [ext_resource type="PackedScene" path="res://scenes/track.tscn" id="2_track"]
 [ext_resource type="PackedScene" path="res://ui/hud.tscn" id="3_hud"]
+[ext_resource type="PackedScene" path="res://ui/upgrade_panel.tscn" id="4_upgrade_panel"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main_script")
@@ -10,3 +11,18 @@ script = ExtResource("1_main_script")
 [node name="Track" parent="." instance=ExtResource("2_track")]
 
 [node name="HUD" parent="." instance=ExtResource("3_hud")]
+
+[node name="UIOverlay" type="CanvasLayer" parent="."]
+
+[node name="UpgradePanel" parent="UIOverlay" instance=ExtResource("4_upgrade_panel")]
+anchors_preset = 6
+anchor_left = 1.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -300.0
+offset_top = 110.0
+offset_right = -16.0
+offset_bottom = -50.0
+grow_horizontal = 0
+track_path = NodePath("../../Track")

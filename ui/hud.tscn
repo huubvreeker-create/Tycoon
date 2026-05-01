@@ -1,4 +1,4 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://ui/hud.gd" id="1_hud_script"]
 
@@ -20,52 +20,118 @@ content_margin_top = 6.0
 content_margin_right = 16.0
 content_margin_bottom = 6.0
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_progress_bg"]
+bg_color = Color(0.10, 0.12, 0.18, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_left = 4
+corner_radius_bottom_right = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_progress_fill"]
+bg_color = Color(0.13, 0.83, 0.96, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_left = 4
+corner_radius_bottom_right = 4
+
 [node name="HUD" type="CanvasLayer"]
 script = ExtResource("1_hud_script")
 
 [node name="TopBar" type="PanelContainer" parent="."]
 anchors_preset = 10
 anchor_right = 1.0
-offset_bottom = 56.0
+offset_bottom = 92.0
 grow_horizontal = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_topbar")
 
-[node name="Row" type="HBoxContainer" parent="TopBar"]
-custom_minimum_size = Vector2(0, 36)
-theme_override_constants/separation = 32
+[node name="VBox" type="VBoxContainer" parent="TopBar"]
+theme_override_constants/separation = 6
 
-[node name="VenueLabel" type="Label" parent="TopBar/Row"]
+[node name="Row1" type="HBoxContainer" parent="TopBar/VBox"]
+theme_override_constants/separation = 24
+
+[node name="VenueLabel" type="Label" parent="TopBar/VBox/Row1"]
 unique_name_in_owner = true
-text = "Hometown Indoor"
-theme_override_colors/font_color = Color(0.9, 0.95, 1, 1)
+text = "Tier 1  —  Hometown Indoor"
+theme_override_colors/font_color = Color(0.95, 0.97, 1, 1)
 theme_override_font_sizes/font_size = 18
 
-[node name="Spacer" type="Control" parent="TopBar/Row"]
+[node name="Spacer1" type="Control" parent="TopBar/VBox/Row1"]
 size_flags_horizontal = 3
 
-[node name="CashLabel" type="Label" parent="TopBar/Row"]
+[node name="TicketBox" type="HBoxContainer" parent="TopBar/VBox/Row1"]
+theme_override_constants/separation = 6
+
+[node name="TicketCaption" type="Label" parent="TopBar/VBox/Row1/TicketBox"]
+text = "Ticket"
+theme_override_colors/font_color = Color(0.7, 0.78, 0.92, 1)
+theme_override_font_sizes/font_size = 14
+
+[node name="TicketMinusButton" type="Button" parent="TopBar/VBox/Row1/TicketBox"]
 unique_name_in_owner = true
-text = "Cash   €0"
+text = "−"
+custom_minimum_size = Vector2(28, 28)
+
+[node name="TicketLabel" type="Label" parent="TopBar/VBox/Row1/TicketBox"]
+unique_name_in_owner = true
+text = "€25"
+custom_minimum_size = Vector2(60, 0)
+horizontal_alignment = 1
 theme_override_colors/font_color = Color(0.55, 0.92, 0.38, 1)
 theme_override_font_sizes/font_size = 18
 
-[node name="ReputationLabel" type="Label" parent="TopBar/Row"]
+[node name="TicketPlusButton" type="Button" parent="TopBar/VBox/Row1/TicketBox"]
+unique_name_in_owner = true
+text = "+"
+custom_minimum_size = Vector2(28, 28)
+
+[node name="Row2" type="HBoxContainer" parent="TopBar/VBox"]
+theme_override_constants/separation = 24
+
+[node name="CashLabel" type="Label" parent="TopBar/VBox/Row2"]
+unique_name_in_owner = true
+text = "Cash   €0"
+theme_override_colors/font_color = Color(0.55, 0.92, 0.38, 1)
+theme_override_font_sizes/font_size = 16
+
+[node name="ReputationLabel" type="Label" parent="TopBar/VBox/Row2"]
 unique_name_in_owner = true
 text = "Rep   0"
 theme_override_colors/font_color = Color(0.99, 0.75, 0.18, 1)
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 16
 
-[node name="DayLabel" type="Label" parent="TopBar/Row"]
-unique_name_in_owner = true
-text = "Day   1"
-theme_override_colors/font_color = Color(0.13, 0.83, 0.96, 1)
-theme_override_font_sizes/font_size = 18
-
-[node name="CustomersLabel" type="Label" parent="TopBar/Row"]
+[node name="CustomersLabel" type="Label" parent="TopBar/VBox/Row2"]
 unique_name_in_owner = true
 text = "Customers   0"
 theme_override_colors/font_color = Color(0.86, 0.42, 0.98, 1)
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 16
+
+[node name="QueueLabel" type="Label" parent="TopBar/VBox/Row2"]
+unique_name_in_owner = true
+text = "Queue   0"
+theme_override_colors/font_color = Color(0.96, 0.27, 0.36, 1)
+theme_override_font_sizes/font_size = 16
+
+[node name="Spacer2" type="Control" parent="TopBar/VBox/Row2"]
+size_flags_horizontal = 3
+
+[node name="DayBox" type="HBoxContainer" parent="TopBar/VBox/Row2"]
+theme_override_constants/separation = 8
+
+[node name="DayLabel" type="Label" parent="TopBar/VBox/Row2/DayBox"]
+unique_name_in_owner = true
+text = "Day   1"
+theme_override_colors/font_color = Color(0.13, 0.83, 0.96, 1)
+theme_override_font_sizes/font_size = 16
+
+[node name="DayProgress" type="ProgressBar" parent="TopBar/VBox/Row2/DayBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(180, 14)
+max_value = 100.0
+value = 0.0
+show_percentage = false
+theme_override_styles/background = SubResource("StyleBoxFlat_progress_bg")
+theme_override_styles/fill = SubResource("StyleBoxFlat_progress_fill")
 
 [node name="Footer" type="PanelContainer" parent="."]
 anchors_preset = 12
@@ -77,8 +143,13 @@ grow_horizontal = 2
 grow_vertical = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_footer")
 
-[node name="PhaseLabel" type="Label" parent="Footer"]
-text = "Kart Empire — Phase 1: Single playable track"
+[node name="AlertLabel" type="Label" parent="Footer"]
+unique_name_in_owner = true
+text = ""
 horizontal_alignment = 1
-theme_override_colors/font_color = Color(0.7, 0.78, 0.92, 1)
+theme_override_colors/font_color = Color(0.95, 0.97, 1.0, 1)
 theme_override_font_sizes/font_size = 14
+
+[node name="AlertTimer" type="Timer" parent="."]
+unique_name_in_owner = true
+one_shot = true

@@ -1,82 +1,355 @@
 extends Node2D
 class_name Track
 ##
-## A single race venue. Phase 1 builds an oval Path2D procedurally,
-## spawns a fleet of karts that loop around it, and renders a neon
-## asphalt surface via _draw().
+## A single race venue. Owns:
+## - the procedural Path2D + asphalt rendering (tiered)
+## - the kart fleet
+## - the customer queue + race scheduling
+## - revenue / maintenance hooks
 ##
-## Future phases will add: customer queue, race scheduling, payouts,
-## upgrade slots, dirty/maintenance state.
+## Phase 1: track + karts.
+## Phase 2: day clock-driven maintenance, ticket revenue.
+## Phase 3: customer simulation (this file orchestrates queue + races).
+## Phase 4: upgradeable tiers (track + karts + buy kart) — wired here.
 ##
 
+# --- Configuration ----------------------------------------------------------
 @export var track_id: String = "local_track"
-@export var venue_name: String = "Hometown Indoor"
 @export var initial_kart_count: int = 5
-
-# Visual tuning
-@export var asphalt_width: float = 64.0
-@export var asphalt_color: Color = Color(0.13, 0.14, 0.20)
-@export var rumble_color: Color = Color(0.95, 0.25, 0.35)
-@export var racing_line_color: Color = Color(0.13, 0.83, 0.96)
-
-# Track geometry
-@export var track_center: Vector2 = Vector2(640, 400)
-@export var track_radius_x: float = 380.0
-@export var track_radius_y: float = 200.0
-@export var path_segments: int = 48
+@export var track_center: Vector2 = Vector2(560, 380)
 
 const KART_SCENE: PackedScene = preload("res://scenes/kart.tscn")
 
+# Tier-driven data tables (1-indexed via tier number).
+const TIER_NAMES := {
+	1: "Hometown Indoor",
+	2: "Regional Race Center",
+	3: "National Circuit",
+	4: "International Kart Arena",
+}
+const TIER_KART_CAPACITY := { 1: 5, 2: 8, 3: 12, 4: 16 }
+const TIER_RACE_DURATION := { 1: 7.0, 2: 8.0, 3: 9.5, 4: 11.0 }
+const TIER_TRACK_RX := { 1: 360.0, 2: 400.0, 3: 440.0, 4: 480.0 }
+const TIER_TRACK_RY := { 1: 200.0, 2: 220.0, 3: 240.0, 4: 260.0 }
+const TIER_ASPHALT_WIDTH := { 1: 60.0, 2: 70.0, 3: 80.0, 4: 92.0 }
+const TIER_WAVE_FREQ := { 1: 0, 2: 3, 3: 5, 4: 7 }
+const TIER_WAVE_AMP := { 1: 0.0, 2: 26.0, 3: 34.0, 4: 42.0 }
+const TIER_TRACK_COLOR := {
+	1: Color(0.13, 0.83, 0.96),
+	2: Color(0.55, 0.92, 0.38),
+	3: Color(0.99, 0.75, 0.18),
+	4: Color(0.86, 0.42, 0.98),
+}
+const TIER_RUMBLE_COLOR := {
+	1: Color(0.96, 0.27, 0.36),
+	2: Color(0.96, 0.27, 0.36),
+	3: Color(1.00, 0.40, 0.20),
+	4: Color(1.00, 0.30, 0.55),
+}
+
+# Upgrade pricing (per tier we are upgrading TO).
+const TRACK_UPGRADE_COST := { 2: 25_000, 3: 100_000, 4: 350_000 }
+const KART_UPGRADE_COST_PER_KART := { 2: 4_000, 3: 12_000, 4: 35_000 }
+const BUY_KART_COST_PER_TIER := { 1: 5_000, 2: 9_000, 3: 18_000, 4: 32_000 }
+
+# --- State ------------------------------------------------------------------
+var track_tier: int = 1
+var kart_tier: int = 1
+
 var path: Path2D
-var karts: Array[Node] = []
+var karts: Array[Kart] = []
+var queue: Array[Customer] = []
+var racing: Array[Customer] = []  # currently on a kart
+var leaving_flash: Array = []     # [{pos: Vector2, color: Color, life: float}]
+
+const ASPHALT_BG_COLOR: Color = Color(0.13, 0.14, 0.20)
+const PATH_SEGMENTS: int = 96
+
+# Customer arrival pacing.
+var _arrival_timer: float = 0.0
+var _arrival_interval: float = 4.0
 
 
+# ---------------------------------------------------------------------------
 func _ready() -> void:
 	_build_path()
-	_spawn_initial_karts()
+	for i in range(initial_kart_count):
+		_add_kart_node(true)
+	_emit_initial_state()
+	EventBus.day_ended.connect(_on_day_ended)
+
+
+func _emit_initial_state() -> void:
+	EventBus.track_tier_changed.emit(track_tier, venue_name())
+	EventBus.kart_tier_changed.emit(kart_tier)
+	EventBus.kart_count_changed.emit(karts.size(), kart_capacity())
+	EventBus.queue_changed.emit(queue.size())
+	GameManager.set_active_customers(queue.size() + racing.size())
+
+
+func _process(delta: float) -> void:
+	_tick_arrivals(delta)
+	_tick_queue(delta)
+	_tick_races(delta)
+	_tick_flashes(delta)
+	queue_redraw()  # queue dots + flashes update each frame
+
+
+# --- Public API (used by upgrade panel) -------------------------------------
+func venue_name() -> String:
+	return TIER_NAMES[track_tier]
+
+
+func kart_capacity() -> int:
+	return TIER_KART_CAPACITY[track_tier]
+
+
+func can_upgrade_track() -> bool:
+	return track_tier < 4
+
+
+func track_upgrade_cost() -> int:
+	if not can_upgrade_track():
+		return -1
+	return TRACK_UPGRADE_COST[track_tier + 1]
+
+
+func can_upgrade_karts() -> bool:
+	return kart_tier < 4
+
+
+func kart_upgrade_cost() -> int:
+	if not can_upgrade_karts():
+		return -1
+	return KART_UPGRADE_COST_PER_KART[kart_tier + 1] * max(karts.size(), 1)
+
+
+func can_buy_kart() -> bool:
+	return karts.size() < kart_capacity()
+
+
+func buy_kart_cost() -> int:
+	return BUY_KART_COST_PER_TIER[kart_tier]
+
+
+func upgrade_track() -> bool:
+	if not can_upgrade_track():
+		return false
+	var cost := track_upgrade_cost()
+	if not EconomyManager.try_spend("Track upgrade", cost):
+		return false
+	track_tier += 1
+	_build_path()
+	EventBus.track_tier_changed.emit(track_tier, venue_name())
+	EventBus.kart_count_changed.emit(karts.size(), kart_capacity())
 	queue_redraw()
+	return true
 
 
+func upgrade_karts() -> bool:
+	if not can_upgrade_karts():
+		return false
+	var cost := kart_upgrade_cost()
+	if not EconomyManager.try_spend("Kart upgrade", cost):
+		return false
+	kart_tier += 1
+	for k in karts:
+		k.set_tier(kart_tier)
+	EventBus.kart_tier_changed.emit(kart_tier)
+	return true
+
+
+func buy_kart() -> bool:
+	if not can_buy_kart():
+		return false
+	var cost := buy_kart_cost()
+	if not EconomyManager.try_spend("Kart purchase", cost):
+		return false
+	_add_kart_node(false)
+	EventBus.kart_count_changed.emit(karts.size(), kart_capacity())
+	EventBus.kart_purchased.emit("kart_%d" % karts.size())
+	return true
+
+
+# --- Path / kart construction ----------------------------------------------
 func _build_path() -> void:
+	# Detach any existing karts from the old path BEFORE freeing it,
+	# otherwise re-parenting them to the new path throws "already has parent".
+	if path:
+		for k in karts:
+			var current_parent := k.get_parent()
+			if current_parent != null:
+				current_parent.remove_child(k)
+		path.queue_free()
 	path = Path2D.new()
 	path.name = "RacePath"
+	add_child(path)
+	# Render path under HUD/UI siblings.
+	move_child(path, 0)
 	var curve := Curve2D.new()
-	for i in range(path_segments):
-		var t := float(i) / float(path_segments) * TAU
-		var p := track_center + Vector2(
-			cos(t) * track_radius_x,
-			sin(t) * track_radius_y
-		)
+	var rx: float = TIER_TRACK_RX[track_tier]
+	var ry: float = TIER_TRACK_RY[track_tier]
+	var freq: int = TIER_WAVE_FREQ[track_tier]
+	var amp: float = TIER_WAVE_AMP[track_tier]
+	for i in range(PATH_SEGMENTS):
+		var t := float(i) / float(PATH_SEGMENTS) * TAU
+		var base_x := cos(t) * rx
+		var base_y := sin(t) * ry
+		# Outward perpendicular wobble: makes Tier 2-4 feel like a real circuit.
+		var n := Vector2(cos(t) / rx, sin(t) / ry).normalized()
+		var wobble := 0.0
+		if freq > 0:
+			wobble = sin(t * freq) * amp
+		var p := track_center + Vector2(base_x, base_y) + n * wobble
 		curve.add_point(p)
-	# Close the loop by repeating the first point.
+	# Close the loop.
 	curve.add_point(curve.get_point_position(0))
 	path.curve = curve
-	add_child(path)
+	# Re-attach existing karts (now parentless) to the new path,
+	# preserving their progress so the race continues smoothly.
+	for k in karts:
+		var prev_progress := k.progress
+		path.add_child(k)
+		k.progress = prev_progress
 
 
-func _spawn_initial_karts() -> void:
+func _add_kart_node(initial_spawn: bool) -> void:
+	var kart: Kart = KART_SCENE.instantiate()
 	var palette := [
-		Color(0.96, 0.27, 0.36),  # red
-		Color(0.99, 0.75, 0.18),  # yellow
-		Color(0.13, 0.83, 0.96),  # cyan
-		Color(0.55, 0.92, 0.38),  # green
-		Color(0.86, 0.42, 0.98),  # magenta
+		Color(0.96, 0.27, 0.36),
+		Color(0.99, 0.75, 0.18),
+		Color(0.13, 0.83, 0.96),
+		Color(0.55, 0.92, 0.38),
+		Color(0.86, 0.42, 0.98),
+		Color(1.00, 0.55, 0.20),
+		Color(0.40, 0.65, 1.00),
+		Color(0.95, 0.95, 0.95),
 	]
-	for i in range(initial_kart_count):
-		var kart := KART_SCENE.instantiate()
-		kart.kart_color = palette[i % palette.size()]
-		kart.speed = 140.0 + randf_range(-20.0, 30.0)
-		path.add_child(kart)
-		# Stagger their starting positions on the track.
-		kart.progress = float(i) * 60.0
-		karts.append(kart)
+	kart.kart_color = palette[karts.size() % palette.size()]
+	kart.set_tier(kart_tier)
+	path.add_child(kart)
+	# Stagger starting positions so they don't stack.
+	var slot := karts.size()
+	kart.progress = float(slot) * 70.0
+	karts.append(kart)
+	if not initial_spawn:
+		# Briefly highlight the new kart visually via flash on its position.
+		var flash := { "pos": kart.global_position, "color": Color.WHITE, "life": 0.6 }
+		leaving_flash.append(flash)
+
+
+# --- Customer simulation ---------------------------------------------------
+func _tick_arrivals(delta: float) -> void:
+	# Arrival pace scales down with reputation (more famous = busier).
+	_arrival_interval = max(1.6, 4.0 - GameManager.reputation * 0.02)
+	_arrival_timer += delta
+	if _arrival_timer >= _arrival_interval:
+		_arrival_timer = 0.0
+		_spawn_customer()
+
+
+func _spawn_customer() -> void:
+	var c := Customer.new(GameManager.reputation)
+	queue.append(c)
+	EventBus.customer_arrived.emit(c.id)
+	EventBus.queue_changed.emit(queue.size())
+	GameManager.set_active_customers(queue.size() + racing.size())
+
+
+func _tick_queue(delta: float) -> void:
+	# Patience tick + free-kart pairing.
+	var leavers: Array[Customer] = []
+	for c in queue:
+		c.tick_queue(delta)
+		if c.is_out_of_patience():
+			leavers.append(c)
+	for c in leavers:
+		queue.erase(c)
+		_register_walkout(c)
+
+	# Try to put queued customers onto idle karts.
+	while queue.size() > 0:
+		var free_kart := _find_free_kart()
+		if free_kart == null:
+			break
+		var c2: Customer = queue.pop_front()
+		_start_race(c2, free_kart)
+	EventBus.queue_changed.emit(queue.size())
+	GameManager.set_active_customers(queue.size() + racing.size())
+
+
+func _find_free_kart() -> Kart:
+	for k in karts:
+		if not k.is_busy():
+			return k
+	return null
+
+
+func _start_race(c: Customer, kart: Kart) -> void:
+	c.assigned_kart = kart
+	c.race_time_left = TIER_RACE_DURATION[track_tier]
+	kart.set_racing(true)
+	racing.append(c)
+	EventBus.race_started.emit(track_id, racing.size())
+
+
+func _tick_races(delta: float) -> void:
+	var finished: Array[Customer] = []
+	for c in racing:
+		c.race_time_left -= delta
+		if c.race_time_left <= 0.0:
+			finished.append(c)
+	for c in finished:
+		_finish_race(c)
+
+
+func _finish_race(c: Customer) -> void:
+	racing.erase(c)
+	var kart: Kart = c.assigned_kart
+	if kart:
+		kart.set_racing(false)
+	# Compute outcome.
+	c.compute_satisfaction(track_tier, kart_tier, GameManager.ticket_price)
+	var payment := c.compute_payment(GameManager.ticket_price)
+	EconomyManager.add_revenue("Ticket", payment)
+	GameManager.add_reputation(c.reputation_delta())
+	EventBus.race_finished.emit(track_id, payment)
+	EventBus.customer_left.emit(c.id, c.satisfaction)
+	# Visual flash where the kart is.
+	if kart:
+		var col := Color(0.55, 0.92, 0.38) if c.satisfaction >= 0.6 else Color(0.96, 0.27, 0.36)
+		leaving_flash.append({
+			"pos": kart.global_position,
+			"color": col,
+			"life": 0.7,
+		})
+	GameManager.set_active_customers(queue.size() + racing.size())
+
+
+func _register_walkout(c: Customer) -> void:
+	# Angry walkout: small reputation hit, no payment.
+	GameManager.add_reputation(-1)
+	EventBus.customer_left.emit(c.id, 0.0)
+	leaving_flash.append({
+		"pos": _queue_dot_position(0),
+		"color": Color(0.96, 0.27, 0.36),
+		"life": 0.5,
+	})
+
+
+func _tick_flashes(delta: float) -> void:
+	for f in leaving_flash:
+		f.life -= delta
+	leaving_flash = leaving_flash.filter(func(f): return f.life > 0.0)
+
+
+# --- Day-end maintenance ---------------------------------------------------
+func _on_day_ended(_summary: Dictionary) -> void:
+	var maintenance := karts.size() * 80 * kart_tier
+	EconomyManager.log_expense("Maintenance", maintenance)
 
 
 # --- Rendering --------------------------------------------------------------
-# We draw each segment with draw_line (not draw_polyline) because the
-# GL Compatibility renderer ignores polyline width on many drivers — the
-# track would render as a 1-pixel hairline. draw_line builds quad geometry
-# per segment so thick lines are reliable.
 func _draw() -> void:
 	if path == null or path.curve == null:
 		push_warning("Track: path or curve missing in _draw()")
@@ -86,16 +359,25 @@ func _draw() -> void:
 		push_warning("Track: curve produced no baked points")
 		return
 
-	# Outer rumble strip (drawn first, slightly wider, so it shows as an edge).
+	var rumble: Color = TIER_RUMBLE_COLOR[track_tier]
+	var ribbon: Color = TIER_TRACK_COLOR[track_tier]
+	var asphalt_w: float = TIER_ASPHALT_WIDTH[track_tier]
+
+	# Outer rumble strip (drawn first, slightly wider).
 	for i in range(pts.size() - 1):
-		draw_line(pts[i], pts[i + 1], rumble_color, asphalt_width + 8.0, false)
-	# Asphalt surface on top.
+		draw_line(pts[i], pts[i + 1], rumble, asphalt_w + 8.0, false)
+	# Asphalt surface.
 	for i in range(pts.size() - 1):
-		draw_line(pts[i], pts[i + 1], asphalt_color, asphalt_width, false)
-	# Dashed racing line down the middle.
-	_draw_dashed_polyline(pts, racing_line_color, 2.0, 18.0, 14.0)
+		draw_line(pts[i], pts[i + 1], ASPHALT_BG_COLOR, asphalt_w, false)
+	# Tier-colored racing line down the middle (dashed).
+	_draw_dashed_polyline(pts, ribbon, 2.0, 18.0, 14.0)
 	# Start / finish line.
-	_draw_start_line(pts)
+	_draw_start_line(pts, asphalt_w)
+	# Customer queue dots and flashes.
+	_draw_queue_dots()
+	_draw_flashes()
+	# Tier banner in upper-left of the track.
+	_draw_tier_banner()
 
 
 func _draw_dashed_polyline(
@@ -131,17 +413,16 @@ func _draw_dashed_polyline(
 				drawing = not drawing
 
 
-func _draw_start_line(pts: PackedVector2Array) -> void:
+func _draw_start_line(pts: PackedVector2Array, asphalt_w: float) -> void:
 	if pts.size() < 2:
 		return
 	var p := pts[0]
 	var next: Vector2 = pts[1]
 	var dir: Vector2 = (next - p).normalized()
 	var perp := Vector2(-dir.y, dir.x)
-	var half := asphalt_width * 0.5
+	var half := asphalt_w * 0.5
 	var a := p + perp * half
 	var b := p - perp * half
-	# Checker pattern: alternating black/white squares along the line.
 	var squares := 8
 	for i in range(squares):
 		var t1 := float(i) / float(squares)
@@ -150,3 +431,58 @@ func _draw_start_line(pts: PackedVector2Array) -> void:
 		var s2 := a.lerp(b, t2)
 		var col := Color.WHITE if (i % 2 == 0) else Color(0.05, 0.05, 0.08)
 		draw_line(s1, s2, col, 6.0)
+
+
+func _queue_dot_position(index: int) -> Vector2:
+	# Queue rendered as a vertical column to the left of the track center.
+	var rx: float = TIER_TRACK_RX[track_tier]
+	var origin := track_center + Vector2(-rx - 80.0, -120.0)
+	return origin + Vector2(0, index * 14.0)
+
+
+func _draw_queue_dots() -> void:
+	# Header text + colored circles for each waiting customer.
+	var header_pos := _queue_dot_position(0) + Vector2(-12, -20)
+	draw_string(
+		ThemeDB.fallback_font,
+		header_pos,
+		"QUEUE  %d" % queue.size(),
+		HORIZONTAL_ALIGNMENT_LEFT,
+		-1,
+		13,
+		Color(0.7, 0.78, 0.92, 0.9)
+	)
+	for i in range(queue.size()):
+		var c: Customer = queue[i]
+		var pos := _queue_dot_position(i)
+		# Color shifts from green → yellow → red as patience drains.
+		var ratio: float = clamp(c.wait_time / c.patience, 0.0, 1.0)
+		var col := Color(0.55, 0.92, 0.38).lerp(Color(0.96, 0.27, 0.36), ratio)
+		draw_circle(pos, 5.0, col)
+		draw_arc(pos, 6.5, 0.0, TAU, 24, Color(0, 0, 0, 0.5), 1.5, true)
+
+
+func _draw_flashes() -> void:
+	for f in leaving_flash:
+		var alpha: float = clamp(f.life / 0.7, 0.0, 1.0)
+		var col: Color = f.color
+		col.a = alpha
+		draw_circle(f.pos, 18.0 * (1.0 - alpha) + 8.0, col)
+
+
+func _draw_tier_banner() -> void:
+	var rx: float = TIER_TRACK_RX[track_tier]
+	var ry: float = TIER_TRACK_RY[track_tier]
+	var pos := track_center + Vector2(-rx, -ry - 36.0)
+	var ribbon: Color = TIER_TRACK_COLOR[track_tier]
+	draw_rect(Rect2(pos, Vector2(170, 24)), Color(0.05, 0.06, 0.10, 0.85))
+	draw_rect(Rect2(pos, Vector2(4, 24)), ribbon)
+	draw_string(
+		ThemeDB.fallback_font,
+		pos + Vector2(12, 17),
+		"TIER %d  %s" % [track_tier, venue_name()],
+		HORIZONTAL_ALIGNMENT_LEFT,
+		-1,
+		14,
+		Color(0.95, 0.97, 1.0)
+	)
