@@ -65,4 +65,3 @@ track_path = NodePath("../Track")
 [node name="PopupHost" type="CanvasLayer" parent="."]
 
 [node name="UpgradePopup" parent="PopupHost" instance=ExtResource("4_popup")]
-visible = false

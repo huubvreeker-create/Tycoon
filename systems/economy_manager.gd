@@ -49,5 +49,9 @@ func profit_today() -> int:
 
 
 func _on_day_ended(_summary: Dictionary) -> void:
+	# Credit passive facility income before resetting the ledger.
+	var passive := Facilities.total_daily_passive_income()
+	if passive > 0:
+		add_revenue("Passive income", passive)
 	revenue_today = 0
 	expenses_today = 0

@@ -21,6 +21,8 @@ func _ready() -> void:
 	print("  Cash:   €%d" % EconomyManager.cash)
 	print("  Day:    %d"  % GameManager.day)
 	print("  Ticket: €%d" % GameManager.ticket_price)
+	# HUD buy-kart button opens the kart tab in the upgrade panel.
+	hud.buy_kart_pressed.connect(func(): upgrade_popup.open_for("kart", track))
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -50,8 +52,8 @@ func _handle_left_click(mouse_pos: Vector2) -> void:
 	var kind: Variant = collider.get_meta("kind", "")
 	match kind:
 		"kart":
-			upgrade_popup.open_for("kart", track, mouse_pos)
+			upgrade_popup.open_for("kart", track)
 		"track":
-			upgrade_popup.open_for("track", track, mouse_pos)
+			upgrade_popup.open_for("track", track)
 		_:
 			upgrade_popup.visible = false

@@ -339,6 +339,8 @@ func _build_click_area() -> void:
 	# so the rumble strip + nearby grass also count as "the track".
 	click_area = Area3D.new()
 	click_area.name = "TrackClick"
+	click_area.collision_layer = 1
+	click_area.collision_mask = 1
 	click_area.add_to_group("track_clickable")
 	click_area.set_meta("kind", "track")
 	add_child(click_area)
@@ -422,7 +424,8 @@ func _find_free_kart() -> Kart:
 
 func _start_race(c: Customer, kart: Kart) -> void:
 	c.assigned_kart = kart
-	c.race_time_left = TIER_RACE_DURATION[track_tier()]
+	var base_duration: float = TIER_RACE_DURATION[track_tier()]
+	c.race_time_left = maxf(3.0, base_duration - Facilities.pit_lane_race_time_reduction())
 	kart.set_racing(true)
 	racing.append(c)
 	EventBus.race_started.emit(track_id, racing.size())
@@ -445,9 +448,17 @@ func _finish_race(c: Customer) -> void:
 		kart.set_racing(false)
 	c.compute_satisfaction(track_tier(), kart_tier(), GameManager.ticket_price)
 	var payment := c.compute_payment(GameManager.ticket_price)
-	EconomyManager.add_revenue("Ticket", payment)
-	GameManager.add_reputation(c.reputation_delta())
-	EventBus.race_finished.emit(track_id, payment)
+	# Apply engine revenue multiplier and lighting multiplier.
+	var multiplied := int(round(payment * KartComponents.engine_revenue_multiplier() * Facilities.lighting_revenue_multiplier()))
+	EconomyManager.add_revenue("Ticket", multiplied)
+	# Cafeteria bonus: extra spend per visiting customer.
+	var cafe_bonus := int(Facilities.cafeteria_revenue_per_customer())
+	if cafe_bonus > 0:
+		EconomyManager.add_revenue("Cafeteria", cafe_bonus)
+	# Reputation: base + suit bonus + lounge bonus per finished race.
+	var rep := c.reputation_delta() + KartComponents.suit_reputation_bonus() + Facilities.lounge_reputation_per_race()
+	GameManager.add_reputation(rep)
+	EventBus.race_finished.emit(track_id, multiplied)
 	EventBus.customer_left.emit(c.id, c.satisfaction)
 	if kart:
 		kart.flash_finish(c.satisfaction)
@@ -460,5 +471,6 @@ func _register_walkout(c: Customer) -> void:
 
 
 func _on_day_ended(_summary: Dictionary) -> void:
-	var maintenance := karts.size() * (5 + kart_tier() * 5)
+	var base_maintenance := karts.size() * (5 + kart_tier() * 5)
+	var maintenance := int(round(base_maintenance * KartComponents.chassis_maintenance_multiplier() * Facilities.pit_lane_maintenance_multiplier()))
 	EconomyManager.log_expense("Maintenance", maintenance)

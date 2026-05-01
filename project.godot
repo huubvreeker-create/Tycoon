@@ -18,6 +18,8 @@ config/icon="res://icon.svg"
 EventBus="*res://systems/event_bus.gd"
 EconomyManager="*res://systems/economy_manager.gd"
 GameManager="*res://systems/game_manager.gd"
+KartComponents="*res://systems/kart_components.gd"
+Facilities="*res://systems/facilities.gd"
 
 [display]
 

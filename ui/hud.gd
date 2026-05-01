@@ -152,10 +152,8 @@ func _on_kart_count_changed(_count: int, _capacity: int) -> void:
 
 
 func _on_buy_kart_pressed() -> void:
-	if _track == null:
-		return
-	_track.buy_kart()
-	_refresh_buy_button()
+	# Open the KART tab in the upgrade panel so the player uses the panel flow.
+	buy_kart_pressed.emit()
 
 
 func _refresh_buy_button() -> void:
@@ -165,16 +163,14 @@ func _refresh_buy_button() -> void:
 		return
 	if _track.can_buy_kart():
 		var cost: int = _track.buy_kart_cost()
-		buy_kart_button.text = "Buy Kart   €%s" % _format_cash(cost)
+		buy_kart_button.text = "Karts   €%s" % _format_cash(cost)
 		buy_kart_button.disabled = EconomyManager.cash < cost
 	else:
-		buy_kart_button.text = "Capacity full"
+		buy_kart_button.text = "Fleet full"
 		buy_kart_button.disabled = true
 
 
 func _process(_delta: float) -> void:
-	# Cheaply re-check affordability every frame so the button reflects
-	# revenue ticks without listening to every cash change handler chain.
 	if _track and _track.can_buy_kart():
 		var cost := _track.buy_kart_cost()
 		var should_disable := EconomyManager.cash < cost

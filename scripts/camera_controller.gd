@@ -18,7 +18,7 @@ extends Node3D
 @export var min_zoom: float = 8.0
 @export var max_zoom: float = 45.0
 @export var initial_zoom: float = 22.0
-@export var pitch_degrees: float = -35.0
+@export var pitch_degrees: float = -55.0
 @export var pan_bounds: float = 35.0        # symmetric XZ box around origin
 
 @onready var pitch_node: Node3D = $Pitch

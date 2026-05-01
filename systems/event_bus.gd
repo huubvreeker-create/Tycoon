@@ -36,7 +36,12 @@ signal track_tier_changed(tier: int, venue_name: String)
 signal track_level_changed(level: int, tier: int)
 signal kart_level_changed(level: int, tier: int)
 
-# --- Staff / upgrades / events (placeholders for later phases) -------------
+# --- Kart components --------------------------------------------------------
+signal kart_component_upgraded(component: String, new_level: int)
+
+# --- Facilities -------------------------------------------------------------
+signal facility_upgraded(facility: String, new_level: int)
+
+# --- Staff / world events (future) -----------------------------------------
 signal staff_hired(role: String)
-signal upgrade_purchased(upgrade_id: String)
 signal world_event_triggered(event_id: String, payload: Dictionary)

@@ -40,13 +40,17 @@ func is_out_of_patience() -> bool:
 ## - ticket_price is the price they paid
 func compute_satisfaction(track_tier: int, kart_tier: int, ticket_price: int) -> float:
 	var s: float = SATISFACTION_BASE
-	s += float(track_tier - 1) * 0.07     # +0 to +0.21
-	s += float(kart_tier - 1) * 0.07      # +0 to +0.21
-	s -= clamp(wait_time / patience, 0.0, 1.0) * 0.45  # up to -0.45
-	# Higher than baseline price makes them more demanding.
+	s += float(track_tier - 1) * 0.07
+	s += float(kart_tier - 1) * 0.07
+	# Brakes give extra patience → less wait penalty.
+	var effective_patience := patience * (1.0 + KartComponents.brakes_patience_bonus())
+	s -= clamp(wait_time / effective_patience, 0.0, 1.0) * 0.45
 	s -= float(ticket_price - GameManager.TICKET_DEFAULT) / 200.0
-	# Personal flair from spending_power (pickier vs generous moods).
 	s += (spending_power - 1.0) * 0.05
+	# Component and facility bonuses.
+	s += KartComponents.tires_satisfaction_bonus()
+	s += Facilities.cafeteria_satisfaction_bonus()
+	s += Facilities.lounge_satisfaction_bonus()
 	satisfaction = clamp(s, 0.0, 1.0)
 	return satisfaction
 
