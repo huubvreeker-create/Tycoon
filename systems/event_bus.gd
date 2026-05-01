@@ -31,6 +31,10 @@ signal kart_purchased(kart_id: String)
 signal kart_count_changed(count: int, capacity: int)
 signal kart_tier_changed(tier: int)
 signal track_tier_changed(tier: int, venue_name: String)
+# Fine-grained level changes (1..100). Tier signals only fire on
+# tier rollovers; level signals fire on every upgrade.
+signal track_level_changed(level: int, tier: int)
+signal kart_level_changed(level: int, tier: int)
 
 # --- Staff / upgrades / events (placeholders for later phases) -------------
 signal staff_hired(role: String)

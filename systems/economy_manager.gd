@@ -5,7 +5,7 @@ extends Node
 ## rather than mutating cash directly.
 ##
 
-const STARTING_CASH: int = 50_000
+const STARTING_CASH: int = 5_000
 
 var cash: int = STARTING_CASH
 

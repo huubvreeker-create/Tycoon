@@ -18,6 +18,10 @@ extends CanvasLayer
 @onready var alert_label: Label          = %AlertLabel
 @onready var alert_timer: Timer          = %AlertTimer
 
+var _venue_name: String = "Hometown Indoor"
+var _track_tier: int = 1
+var _track_level: int = 1
+
 
 func _ready() -> void:
 	EventBus.cash_changed.connect(_on_cash_changed)
@@ -29,6 +33,7 @@ func _ready() -> void:
 	EventBus.queue_changed.connect(_on_queue_changed)
 	EventBus.ticket_price_changed.connect(_on_ticket_price_changed)
 	EventBus.track_tier_changed.connect(_on_track_tier_changed)
+	EventBus.track_level_changed.connect(_on_track_level_changed)
 
 	ticket_minus.pressed.connect(func(): GameManager.bump_ticket_price(-GameManager.TICKET_STEP))
 	ticket_plus.pressed.connect(func():  GameManager.bump_ticket_price( GameManager.TICKET_STEP))
@@ -99,11 +104,23 @@ func _on_ticket_price_changed(price: int) -> void:
 
 
 func _on_track_tier_changed(tier: int, venue: String) -> void:
-	venue_label.text = "Tier %d  —  %s" % [tier, venue]
+	_track_tier = tier
+	_venue_name = venue
+	_refresh_venue_label()
 	_flash(
 		"Track upgraded to %s" % venue,
 		Color(0.13, 0.83, 0.96)
 	)
+
+
+func _on_track_level_changed(level: int, tier: int) -> void:
+	_track_level = level
+	_track_tier = tier
+	_refresh_venue_label()
+
+
+func _refresh_venue_label() -> void:
+	venue_label.text = "Tier %d  Lvl %d  —  %s" % [_track_tier, _track_level, _venue_name]
 
 
 func _on_day_ended(summary: Dictionary) -> void:

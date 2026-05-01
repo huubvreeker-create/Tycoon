@@ -11,14 +11,17 @@ class_name Kart
 ##
 
 const IDLE_SPEED_BASE: float = 55.0
-const RACING_SPEED_BASE: float = 140.0
-const TIER_SPEED_BONUS: float = 25.0   # added per tier above 1
+const RACING_SPEED_BASE: float = 130.0
+# Each level adds a small speed boost so every upgrade is felt,
+# while crossing a tier boundary (every 25 levels) refreshes visuals.
+const PER_LEVEL_SPEED_BONUS: float = 1.4
+const LEVELS_PER_TIER: int = 25
 
 @export var kart_color: Color = Color(0.96, 0.27, 0.36)
 @export var body_length: float = 24.0
 @export var body_width: float = 12.0
 
-var tier: int = 1
+var level: int = 1
 var racing: bool = false
 
 
@@ -32,9 +35,13 @@ func _process(delta: float) -> void:
 	progress += current_speed() * delta
 
 
+func tier() -> int:
+	return clamp((level - 1) / LEVELS_PER_TIER + 1, 1, 4)
+
+
 func current_speed() -> float:
 	var base := RACING_SPEED_BASE if racing else IDLE_SPEED_BASE
-	return base + (tier - 1) * TIER_SPEED_BONUS
+	return base + (level - 1) * PER_LEVEL_SPEED_BONUS
 
 
 func is_busy() -> bool:
@@ -48,14 +55,15 @@ func set_racing(active: bool) -> void:
 	queue_redraw()
 
 
-func set_tier(new_tier: int) -> void:
-	tier = clamp(new_tier, 1, 4)
+func set_level(new_level: int) -> void:
+	level = clamp(new_level, 1, 100)
 	queue_redraw()
 
 
 func _draw() -> void:
+	var t := tier()
 	# Tier 4 gets a soft glow halo behind the body.
-	if tier >= 4:
+	if t >= 4:
 		draw_circle(Vector2.ZERO, body_length * 0.85, Color(1, 1, 1, 0.10))
 
 	# Racing karts get a subtle motion-trail behind them.
@@ -83,7 +91,7 @@ func _draw() -> void:
 	draw_rect(Rect2(-hl, -hw, body_length, body_width), kart_color)
 
 	# Tier 3+: side stripes (bright accent bands).
-	if tier >= 3:
+	if t >= 3:
 		var stripe := kart_color.lightened(0.45)
 		draw_rect(Rect2(-hl + 4, -hw, body_length - 10, 1.5), stripe)
 		draw_rect(Rect2(-hl + 4, hw - 1.5, body_length - 10, 1.5), stripe)
@@ -99,7 +107,7 @@ func _draw() -> void:
 	draw_rect(Rect2(hl - 3, -hw, 3, body_width), Color(1, 1, 1, 0.85))
 
 	# Tier 2+: rear spoiler (wing behind the body).
-	if tier >= 2:
+	if t >= 2:
 		var spoiler := kart_color.darkened(0.2)
 		draw_rect(Rect2(-hl - 3, -hw - 1, 3, body_width + 2), spoiler)
 		draw_rect(Rect2(-hl - 4, -hw - 1, 1, body_width + 2), Color(1, 1, 1, 0.6))

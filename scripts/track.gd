@@ -47,14 +47,28 @@ const TIER_RUMBLE_COLOR := {
 	4: Color(1.00, 0.30, 0.55),
 }
 
-# Upgrade pricing (per tier we are upgrading TO).
-const TRACK_UPGRADE_COST := { 2: 25_000, 3: 100_000, 4: 350_000 }
-const KART_UPGRADE_COST_PER_KART := { 2: 4_000, 3: 12_000, 4: 35_000 }
-const BUY_KART_COST_PER_TIER := { 1: 5_000, 2: 9_000, 3: 18_000, 4: 32_000 }
+# Level-based progression: 100 levels total, every LEVELS_PER_TIER
+# levels you cross a visible tier boundary (new venue name, new
+# track shape, new kart silhouette). Per-level upgrades give small
+# mechanical buffs (capacity, kart speed) so each click matters
+# without instantly transforming the game.
+const MAX_LEVEL: int = 100
+const LEVELS_PER_TIER: int = 25  # → tiers 1..4 land at lvl 1, 26, 51, 76
+
+# Upgrade pricing — exponential scaling per level. Numbers tuned so
+# that the early-game starting cash (€5k) buys you ~15-20 first
+# upgrades, while reaching the highest tier takes a real grind.
+const TRACK_UPGRADE_BASE_COST: float = 250.0
+const TRACK_UPGRADE_GROWTH: float = 1.075
+const KART_UPGRADE_BASE_COST: float = 50.0       # multiplied by kart count
+const KART_UPGRADE_GROWTH: float = 1.075
+const BUY_KART_BASE_COST: float = 200.0
+const BUY_KART_LEVEL_FACTOR: float = 80.0
+const BUY_KART_FLEET_GROWTH: float = 1.06
 
 # --- State ------------------------------------------------------------------
-var track_tier: int = 1
-var kart_tier: int = 1
+var track_level: int = 1
+var kart_level: int = 1
 
 var path: Path2D
 var karts: Array[Kart] = []
@@ -80,8 +94,10 @@ func _ready() -> void:
 
 
 func _emit_initial_state() -> void:
-	EventBus.track_tier_changed.emit(track_tier, venue_name())
-	EventBus.kart_tier_changed.emit(kart_tier)
+	EventBus.track_tier_changed.emit(track_tier(), venue_name())
+	EventBus.kart_tier_changed.emit(kart_tier())
+	EventBus.track_level_changed.emit(track_level, track_tier())
+	EventBus.kart_level_changed.emit(kart_level, kart_tier())
 	EventBus.kart_count_changed.emit(karts.size(), kart_capacity())
 	EventBus.queue_changed.emit(queue.size())
 	GameManager.set_active_customers(queue.size() + racing.size())
@@ -96,32 +112,51 @@ func _process(delta: float) -> void:
 
 
 # --- Public API (used by upgrade panel) -------------------------------------
+func track_tier() -> int:
+	return clamp((track_level - 1) / LEVELS_PER_TIER + 1, 1, 4)
+
+
+func kart_tier() -> int:
+	return clamp((kart_level - 1) / LEVELS_PER_TIER + 1, 1, 4)
+
+
+func track_level_in_tier() -> int:
+	return ((track_level - 1) % LEVELS_PER_TIER) + 1
+
+
+func kart_level_in_tier() -> int:
+	return ((kart_level - 1) % LEVELS_PER_TIER) + 1
+
+
 func venue_name() -> String:
-	return TIER_NAMES[track_tier]
+	return TIER_NAMES[track_tier()]
 
 
 func kart_capacity() -> int:
-	return TIER_KART_CAPACITY[track_tier]
+	# Capacity grows steadily so each level matters: roughly +1 kart
+	# every 6 levels on top of the tier baseline.
+	return TIER_KART_CAPACITY[track_tier()] + (track_level_in_tier() - 1) / 6
 
 
 func can_upgrade_track() -> bool:
-	return track_tier < 4
+	return track_level < MAX_LEVEL
 
 
 func track_upgrade_cost() -> int:
 	if not can_upgrade_track():
 		return -1
-	return TRACK_UPGRADE_COST[track_tier + 1]
+	return int(round(TRACK_UPGRADE_BASE_COST * pow(TRACK_UPGRADE_GROWTH, track_level - 1)))
 
 
 func can_upgrade_karts() -> bool:
-	return kart_tier < 4
+	return kart_level < MAX_LEVEL
 
 
 func kart_upgrade_cost() -> int:
 	if not can_upgrade_karts():
 		return -1
-	return KART_UPGRADE_COST_PER_KART[kart_tier + 1] * max(karts.size(), 1)
+	var per_kart: float = KART_UPGRADE_BASE_COST * pow(KART_UPGRADE_GROWTH, kart_level - 1)
+	return int(round(per_kart * max(karts.size(), 1)))
 
 
 func can_buy_kart() -> bool:
@@ -129,7 +164,10 @@ func can_buy_kart() -> bool:
 
 
 func buy_kart_cost() -> int:
-	return BUY_KART_COST_PER_TIER[kart_tier]
+	# Climbs with track investment AND fleet size, so late-game karts
+	# aren't trivially cheap relative to ticket revenue.
+	var base: float = BUY_KART_BASE_COST + BUY_KART_LEVEL_FACTOR * float(track_level)
+	return int(round(base * pow(BUY_KART_FLEET_GROWTH, karts.size())))
 
 
 func upgrade_track() -> bool:
@@ -138,9 +176,14 @@ func upgrade_track() -> bool:
 	var cost := track_upgrade_cost()
 	if not EconomyManager.try_spend("Track upgrade", cost):
 		return false
-	track_tier += 1
-	_build_path()
-	EventBus.track_tier_changed.emit(track_tier, venue_name())
+	var prev_tier := track_tier()
+	track_level += 1
+	var new_tier := track_tier()
+	# Crossing a tier boundary: rebuild the path + announce visually.
+	if new_tier != prev_tier:
+		_build_path()
+		EventBus.track_tier_changed.emit(new_tier, venue_name())
+	EventBus.track_level_changed.emit(track_level, new_tier)
 	EventBus.kart_count_changed.emit(karts.size(), kart_capacity())
 	queue_redraw()
 	return true
@@ -152,10 +195,16 @@ func upgrade_karts() -> bool:
 	var cost := kart_upgrade_cost()
 	if not EconomyManager.try_spend("Kart upgrade", cost):
 		return false
-	kart_tier += 1
+	var prev_tier := kart_tier()
+	kart_level += 1
+	var new_tier := kart_tier()
+	# Push new level to every kart so speed scales every upgrade,
+	# while visuals only refresh on tier crossings (handled in Kart).
 	for k in karts:
-		k.set_tier(kart_tier)
-	EventBus.kart_tier_changed.emit(kart_tier)
+		k.set_level(kart_level)
+	if new_tier != prev_tier:
+		EventBus.kart_tier_changed.emit(new_tier)
+	EventBus.kart_level_changed.emit(kart_level, new_tier)
 	return true
 
 
@@ -187,10 +236,11 @@ func _build_path() -> void:
 	# Render path under HUD/UI siblings.
 	move_child(path, 0)
 	var curve := Curve2D.new()
-	var rx: float = TIER_TRACK_RX[track_tier]
-	var ry: float = TIER_TRACK_RY[track_tier]
-	var freq: int = TIER_WAVE_FREQ[track_tier]
-	var amp: float = TIER_WAVE_AMP[track_tier]
+	var t_tier: int = track_tier()
+	var rx: float = TIER_TRACK_RX[t_tier]
+	var ry: float = TIER_TRACK_RY[t_tier]
+	var freq: int = TIER_WAVE_FREQ[t_tier]
+	var amp: float = TIER_WAVE_AMP[t_tier]
 	for i in range(PATH_SEGMENTS):
 		var t := float(i) / float(PATH_SEGMENTS) * TAU
 		var base_x := cos(t) * rx
@@ -226,7 +276,7 @@ func _add_kart_node(initial_spawn: bool) -> void:
 		Color(0.95, 0.95, 0.95),
 	]
 	kart.kart_color = palette[karts.size() % palette.size()]
-	kart.set_tier(kart_tier)
+	kart.set_level(kart_level)
 	path.add_child(kart)
 	# Stagger starting positions so they don't stack.
 	var slot := karts.size()
@@ -287,7 +337,7 @@ func _find_free_kart() -> Kart:
 
 func _start_race(c: Customer, kart: Kart) -> void:
 	c.assigned_kart = kart
-	c.race_time_left = TIER_RACE_DURATION[track_tier]
+	c.race_time_left = TIER_RACE_DURATION[track_tier()]
 	kart.set_racing(true)
 	racing.append(c)
 	EventBus.race_started.emit(track_id, racing.size())
@@ -309,7 +359,7 @@ func _finish_race(c: Customer) -> void:
 	if kart:
 		kart.set_racing(false)
 	# Compute outcome.
-	c.compute_satisfaction(track_tier, kart_tier, GameManager.ticket_price)
+	c.compute_satisfaction(track_tier(), kart_tier(), GameManager.ticket_price)
 	var payment := c.compute_payment(GameManager.ticket_price)
 	EconomyManager.add_revenue("Ticket", payment)
 	GameManager.add_reputation(c.reputation_delta())
@@ -345,7 +395,9 @@ func _tick_flashes(delta: float) -> void:
 
 # --- Day-end maintenance ---------------------------------------------------
 func _on_day_ended(_summary: Dictionary) -> void:
-	var maintenance := karts.size() * 80 * kart_tier
+	# Maintenance scales gently with both fleet size and tier so it
+	# never overwhelms early-game profits.
+	var maintenance := karts.size() * (5 + kart_tier() * 5)
 	EconomyManager.log_expense("Maintenance", maintenance)
 
 
@@ -359,9 +411,10 @@ func _draw() -> void:
 		push_warning("Track: curve produced no baked points")
 		return
 
-	var rumble: Color = TIER_RUMBLE_COLOR[track_tier]
-	var ribbon: Color = TIER_TRACK_COLOR[track_tier]
-	var asphalt_w: float = TIER_ASPHALT_WIDTH[track_tier]
+	var t_tier: int = track_tier()
+	var rumble: Color = TIER_RUMBLE_COLOR[t_tier]
+	var ribbon: Color = TIER_TRACK_COLOR[t_tier]
+	var asphalt_w: float = TIER_ASPHALT_WIDTH[t_tier]
 
 	# Outer rumble strip (drawn first, slightly wider).
 	for i in range(pts.size() - 1):
@@ -435,7 +488,7 @@ func _draw_start_line(pts: PackedVector2Array, asphalt_w: float) -> void:
 
 func _queue_dot_position(index: int) -> Vector2:
 	# Queue rendered as a vertical column to the left of the track center.
-	var rx: float = TIER_TRACK_RX[track_tier]
+	var rx: float = TIER_TRACK_RX[track_tier()]
 	var origin := track_center + Vector2(-rx - 80.0, -120.0)
 	return origin + Vector2(0, index * 14.0)
 
@@ -471,16 +524,17 @@ func _draw_flashes() -> void:
 
 
 func _draw_tier_banner() -> void:
-	var rx: float = TIER_TRACK_RX[track_tier]
-	var ry: float = TIER_TRACK_RY[track_tier]
+	var t_tier: int = track_tier()
+	var rx: float = TIER_TRACK_RX[t_tier]
+	var ry: float = TIER_TRACK_RY[t_tier]
 	var pos := track_center + Vector2(-rx, -ry - 36.0)
-	var ribbon: Color = TIER_TRACK_COLOR[track_tier]
-	draw_rect(Rect2(pos, Vector2(170, 24)), Color(0.05, 0.06, 0.10, 0.85))
+	var ribbon: Color = TIER_TRACK_COLOR[t_tier]
+	draw_rect(Rect2(pos, Vector2(220, 24)), Color(0.05, 0.06, 0.10, 0.85))
 	draw_rect(Rect2(pos, Vector2(4, 24)), ribbon)
 	draw_string(
 		ThemeDB.fallback_font,
 		pos + Vector2(12, 17),
-		"TIER %d  %s" % [track_tier, venue_name()],
+		"TIER %d  Lvl %d/%d  %s" % [t_tier, track_level, MAX_LEVEL, venue_name()],
 		HORIZONTAL_ALIGNMENT_LEFT,
 		-1,
 		14,
