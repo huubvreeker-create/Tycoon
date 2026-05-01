@@ -114,7 +114,16 @@ theme_override_styles/focus = SubResource("StyleBoxFlat_tab_inactive")
 [node name="TabFacilities" type="Button" parent="VBox/TabBar"]
 unique_name_in_owner = true
 size_flags_horizontal = 3
-text = "FACILITIES"
+text = "FACILITY"
+theme_override_styles/normal = SubResource("StyleBoxFlat_tab_inactive")
+theme_override_styles/hover = SubResource("StyleBoxFlat_tab_inactive")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_tab_inactive")
+theme_override_styles/focus = SubResource("StyleBoxFlat_tab_inactive")
+
+[node name="TabStaff" type="Button" parent="VBox/TabBar"]
+unique_name_in_owner = true
+size_flags_horizontal = 3
+text = "STAFF"
 theme_override_styles/normal = SubResource("StyleBoxFlat_tab_inactive")
 theme_override_styles/hover = SubResource("StyleBoxFlat_tab_inactive")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_tab_inactive")

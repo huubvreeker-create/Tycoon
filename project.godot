@@ -20,6 +20,7 @@ EconomyManager="*res://systems/economy_manager.gd"
 GameManager="*res://systems/game_manager.gd"
 KartComponents="*res://systems/kart_components.gd"
 Facilities="*res://systems/facilities.gd"
+Staff="*res://systems/staff.gd"
 
 [display]
 

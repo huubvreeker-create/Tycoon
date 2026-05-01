@@ -380,7 +380,9 @@ func _add_kart_node(initial_spawn: bool) -> void:
 
 # --- Customer simulation ---------------------------------------------------
 func _tick_arrivals(delta: float) -> void:
-	var interval: float = max(1.6, 4.0 - GameManager.reputation * 0.02)
+	var base_interval: float = max(1.6, 4.0 - GameManager.reputation * 0.02)
+	# Marketing staff make arrivals more frequent (shorter interval).
+	var interval: float = base_interval / Staff.marketing_arrival_multiplier()
 	_arrival_timer += delta
 	if _arrival_timer >= interval:
 		_arrival_timer = 0.0
@@ -397,9 +399,14 @@ func _spawn_customer() -> void:
 
 func _tick_queue(delta: float) -> void:
 	var leavers: Array[Customer] = []
+	var protection := Staff.receptionist_walkout_protection()
 	for c in queue:
 		c.tick_queue(delta)
 		if c.is_out_of_patience():
+			# Receptionists win some customers back from leaving.
+			if randf() < protection:
+				c.wait_time *= 0.5
+				continue
 			leavers.append(c)
 	for c in leavers:
 		queue.erase(c)
@@ -472,5 +479,8 @@ func _register_walkout(c: Customer) -> void:
 
 func _on_day_ended(_summary: Dictionary) -> void:
 	var base_maintenance := karts.size() * (5 + kart_tier() * 5)
-	var maintenance := int(round(base_maintenance * KartComponents.chassis_maintenance_multiplier() * Facilities.pit_lane_maintenance_multiplier()))
+	var maintenance := int(round(base_maintenance
+		* KartComponents.chassis_maintenance_multiplier()
+		* Facilities.pit_lane_maintenance_multiplier()
+		* Staff.mechanic_maintenance_multiplier()))
 	EconomyManager.log_expense("Maintenance", maintenance)

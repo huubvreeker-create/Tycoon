@@ -12,6 +12,7 @@ extends PanelContainer
 @onready var tab_track: Button         = %TabTrack
 @onready var tab_kart: Button          = %TabKart
 @onready var tab_facilities: Button    = %TabFacilities
+@onready var tab_staff: Button         = %TabStaff
 @onready var upgrade_list: VBoxContainer = %UpgradeList
 
 var _track: Track = null
@@ -31,6 +32,7 @@ func _ready() -> void:
 	tab_track.pressed.connect(func(): _switch_tab("track"))
 	tab_kart.pressed.connect(func(): _switch_tab("kart"))
 	tab_facilities.pressed.connect(func(): _switch_tab("facilities"))
+	tab_staff.pressed.connect(func(): _switch_tab("staff"))
 
 	EventBus.cash_changed.connect(_refresh.unbind(1))
 	EventBus.track_level_changed.connect(_refresh.unbind(2))
@@ -40,6 +42,7 @@ func _ready() -> void:
 	EventBus.kart_count_changed.connect(_refresh.unbind(2))
 	EventBus.kart_component_upgraded.connect(_refresh.unbind(2))
 	EventBus.facility_upgraded.connect(_refresh.unbind(2))
+	EventBus.staff_hired.connect(_refresh.unbind(1))
 	visible = false
 
 
@@ -57,18 +60,19 @@ func _switch_tab(tab: String) -> void:
 
 
 func _update_tab_styles() -> void:
-	tab_track.add_theme_stylebox_override("normal",  _active_tab == "track" and _style_active or _style_inactive)
-	tab_track.add_theme_stylebox_override("hover",   _active_tab == "track" and _style_active or _style_inactive)
-	tab_track.add_theme_stylebox_override("pressed", _active_tab == "track" and _style_active or _style_inactive)
-	tab_track.add_theme_stylebox_override("focus",   _active_tab == "track" and _style_active or _style_inactive)
-	tab_kart.add_theme_stylebox_override("normal",   _active_tab == "kart" and _style_active or _style_inactive)
-	tab_kart.add_theme_stylebox_override("hover",    _active_tab == "kart" and _style_active or _style_inactive)
-	tab_kart.add_theme_stylebox_override("pressed",  _active_tab == "kart" and _style_active or _style_inactive)
-	tab_kart.add_theme_stylebox_override("focus",    _active_tab == "kart" and _style_active or _style_inactive)
-	tab_facilities.add_theme_stylebox_override("normal",  _active_tab == "facilities" and _style_active or _style_inactive)
-	tab_facilities.add_theme_stylebox_override("hover",   _active_tab == "facilities" and _style_active or _style_inactive)
-	tab_facilities.add_theme_stylebox_override("pressed", _active_tab == "facilities" and _style_active or _style_inactive)
-	tab_facilities.add_theme_stylebox_override("focus",   _active_tab == "facilities" and _style_active or _style_inactive)
+	for entry: Array in [
+		[tab_track, "track"],
+		[tab_kart, "kart"],
+		[tab_facilities, "facilities"],
+		[tab_staff, "staff"],
+	]:
+		var btn: Button = entry[0]
+		var is_active: bool = (_active_tab == entry[1])
+		var sb: StyleBoxFlat = _style_active if is_active else _style_inactive
+		btn.add_theme_stylebox_override("normal",  sb)
+		btn.add_theme_stylebox_override("hover",   sb)
+		btn.add_theme_stylebox_override("pressed", sb)
+		btn.add_theme_stylebox_override("focus",   sb)
 
 
 func _refresh() -> void:
@@ -93,6 +97,9 @@ func _build_rows() -> void:
 		"facilities":
 			title_label.text = "Facilities"
 			_add_facility_rows()
+		"staff":
+			title_label.text = "Staff"
+			_add_staff_rows()
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +223,46 @@ func _add_facility_rows() -> void:
 
 
 # ---------------------------------------------------------------------------
+# STAFF TAB
+# ---------------------------------------------------------------------------
+func _add_staff_rows() -> void:
+	_add_section_header("PAYROLL  —  €%d / day" % Staff.total_daily_salaries())
+	var colors := {
+		"mechanic":     Color(0.13, 0.83, 0.96),
+		"receptionist": Color(0.99, 0.75, 0.18),
+		"marketing":    Color(0.86, 0.42, 0.98),
+		"instructor":   Color(0.55, 0.92, 0.38),
+		"janitor":      Color(0.96, 0.27, 0.36),
+	}
+	for role: String in Staff.role_names():
+		var n := Staff.get_count(role)
+		var on_hire: Callable = _make_hire_callable(role)
+		_add_upgrade_row(
+			colors.get(role, Color.WHITE),
+			Staff.display_name(role),
+			"%d / %d  hired" % [n, Staff.MAX_PER_ROLE],
+			float(n),
+			float(Staff.MAX_PER_ROLE),
+			"%s\n€%d/day each  —  %s" % [
+				Staff.description(role),
+				Staff.daily_salary(role),
+				Staff.effect_text(role),
+			],
+			Staff.can_hire(role),
+			Staff.hire_cost(role),
+			on_hire,
+			"Hire",
+			"FULL TEAM"
+		)
+
+
+func _make_hire_callable(role: String) -> Callable:
+	return func():
+		Staff.hire(role)
+		_build_rows()
+
+
+# ---------------------------------------------------------------------------
 # Row helpers
 # ---------------------------------------------------------------------------
 func _add_section_header(text: String) -> void:
@@ -235,7 +282,9 @@ func _add_upgrade_row(
 		detail_text: String,
 		can_upg: bool,
 		cost: int,
-		on_press: Callable
+		on_press: Callable,
+		verb: String = "Upgrade",
+		max_label: String = "MAX LEVEL"
 ) -> void:
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _style_row)
@@ -296,13 +345,13 @@ func _add_upgrade_row(
 	# Upgrade button
 	var btn := Button.new()
 	if not can_upg:
-		btn.text = "MAX LEVEL"
+		btn.text = max_label
 		btn.disabled = true
 	elif EconomyManager.cash < cost:
-		btn.text = "Upgrade  —  €%s" % _fmt(cost)
+		btn.text = "%s  —  €%s" % [verb, _fmt(cost)]
 		btn.disabled = true
 	else:
-		btn.text = "Upgrade  —  €%s" % _fmt(cost)
+		btn.text = "%s  —  €%s" % [verb, _fmt(cost)]
 		btn.disabled = false
 		btn.pressed.connect(on_press)
 	vbox.add_child(btn)
