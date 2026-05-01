@@ -2,7 +2,6 @@
 
 [ext_resource type="Script" path="res://scripts/kart.gd" id="1_kart_script"]
 
-[node name="Kart" type="PathFollow2D"]
-rotates = true
+[node name="Kart" type="PathFollow3D"]
 loop = true
 script = ExtResource("1_kart_script")

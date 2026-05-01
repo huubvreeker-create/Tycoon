@@ -2,5 +2,5 @@
 
 [ext_resource type="Script" path="res://scripts/track.gd" id="1_track_script"]
 
-[node name="Track" type="Node2D"]
+[node name="Track" type="Node3D"]
 script = ExtResource("1_track_script")

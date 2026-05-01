@@ -5,6 +5,10 @@ extends CanvasLayer
 ## the systems needing to know about the UI.
 ##
 
+signal buy_kart_pressed
+
+@export var track_path: NodePath
+
 @onready var venue_label: Label          = %VenueLabel
 @onready var cash_label: Label           = %CashLabel
 @onready var reputation_label: Label     = %ReputationLabel
@@ -15,15 +19,18 @@ extends CanvasLayer
 @onready var ticket_label: Label         = %TicketLabel
 @onready var ticket_minus: Button        = %TicketMinusButton
 @onready var ticket_plus: Button         = %TicketPlusButton
+@onready var buy_kart_button: Button     = %BuyKartButton
 @onready var alert_label: Label          = %AlertLabel
 @onready var alert_timer: Timer          = %AlertTimer
 
 var _venue_name: String = "Hometown Indoor"
 var _track_tier: int = 1
 var _track_level: int = 1
+var _track: Track
 
 
 func _ready() -> void:
+	_track = get_node_or_null(track_path) as Track
 	EventBus.cash_changed.connect(_on_cash_changed)
 	EventBus.reputation_changed.connect(_on_reputation_changed)
 	EventBus.day_changed.connect(_on_day_changed)
@@ -34,12 +41,15 @@ func _ready() -> void:
 	EventBus.ticket_price_changed.connect(_on_ticket_price_changed)
 	EventBus.track_tier_changed.connect(_on_track_tier_changed)
 	EventBus.track_level_changed.connect(_on_track_level_changed)
+	EventBus.kart_count_changed.connect(_on_kart_count_changed)
 
 	ticket_minus.pressed.connect(func(): GameManager.bump_ticket_price(-GameManager.TICKET_STEP))
 	ticket_plus.pressed.connect(func():  GameManager.bump_ticket_price( GameManager.TICKET_STEP))
+	buy_kart_button.pressed.connect(_on_buy_kart_pressed)
 	alert_timer.timeout.connect(func(): alert_label.text = "")
 
 	_refresh_all()
+	_refresh_buy_button()
 
 
 func _refresh_all() -> void:
@@ -135,3 +145,38 @@ func _on_day_ended(summary: Dictionary) -> void:
 		profit_color,
 		5.5
 	)
+
+
+func _on_kart_count_changed(_count: int, _capacity: int) -> void:
+	_refresh_buy_button()
+
+
+func _on_buy_kart_pressed() -> void:
+	if _track == null:
+		return
+	_track.buy_kart()
+	_refresh_buy_button()
+
+
+func _refresh_buy_button() -> void:
+	if _track == null:
+		buy_kart_button.text = "Buy Kart"
+		buy_kart_button.disabled = true
+		return
+	if _track.can_buy_kart():
+		var cost: int = _track.buy_kart_cost()
+		buy_kart_button.text = "Buy Kart   €%s" % _format_cash(cost)
+		buy_kart_button.disabled = EconomyManager.cash < cost
+	else:
+		buy_kart_button.text = "Capacity full"
+		buy_kart_button.disabled = true
+
+
+func _process(_delta: float) -> void:
+	# Cheaply re-check affordability every frame so the button reflects
+	# revenue ticks without listening to every cash change handler chain.
+	if _track and _track.can_buy_kart():
+		var cost := _track.buy_kart_cost()
+		var should_disable := EconomyManager.cash < cost
+		if buy_kart_button.disabled != should_disable:
+			buy_kart_button.disabled = should_disable

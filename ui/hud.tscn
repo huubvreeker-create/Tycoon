@@ -52,12 +52,17 @@ theme_override_constants/separation = 24
 
 [node name="VenueLabel" type="Label" parent="TopBar/VBox/Row1"]
 unique_name_in_owner = true
-text = "Tier 1  —  Hometown Indoor"
+text = "Tier 1  Lvl 1  —  Hometown Indoor"
 theme_override_colors/font_color = Color(0.95, 0.97, 1, 1)
 theme_override_font_sizes/font_size = 18
 
 [node name="Spacer1" type="Control" parent="TopBar/VBox/Row1"]
 size_flags_horizontal = 3
+
+[node name="BuyKartButton" type="Button" parent="TopBar/VBox/Row1"]
+unique_name_in_owner = true
+text = "Buy Kart   €280"
+custom_minimum_size = Vector2(150, 30)
 
 [node name="TicketBox" type="HBoxContainer" parent="TopBar/VBox/Row1"]
 theme_override_constants/separation = 6
@@ -145,10 +150,10 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_footer")
 
 [node name="AlertLabel" type="Label" parent="Footer"]
 unique_name_in_owner = true
-text = ""
+text = "Click a kart to upgrade the fleet  —  click the track to upgrade the venue  —  right-mouse drag to pan  —  scroll to zoom"
 horizontal_alignment = 1
-theme_override_colors/font_color = Color(0.95, 0.97, 1.0, 1)
-theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.7, 0.78, 0.92, 1)
+theme_override_font_sizes/font_size = 13
 
 [node name="AlertTimer" type="Timer" parent="."]
 unique_name_in_owner = true
