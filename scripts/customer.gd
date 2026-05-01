@@ -47,11 +47,12 @@ func compute_satisfaction(track_tier: int, kart_tier: int, ticket_price: int) ->
 	s -= clamp(wait_time / effective_patience, 0.0, 1.0) * 0.45
 	s -= float(ticket_price - GameManager.TICKET_DEFAULT) / 200.0
 	s += (spending_power - 1.0) * 0.05
-	# Component, facility and staff bonuses.
+	# Component, facility, staff and daily-event bonuses.
 	s += KartComponents.tires_satisfaction_bonus()
 	s += Facilities.cafeteria_satisfaction_bonus()
 	s += Facilities.lounge_satisfaction_bonus()
 	s += Staff.instructor_satisfaction_bonus()
+	s += DailyEvents.satisfaction_bonus_today
 	satisfaction = clamp(s, 0.0, 1.0)
 	return satisfaction
 

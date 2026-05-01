@@ -56,6 +56,12 @@ text = "Tier 1  Lvl 1  —  Hometown Indoor"
 theme_override_colors/font_color = Color(0.95, 0.97, 1, 1)
 theme_override_font_sizes/font_size = 18
 
+[node name="EventTag" type="Label" parent="TopBar/VBox/Row1"]
+unique_name_in_owner = true
+text = ""
+visible = false
+theme_override_font_sizes/font_size = 14
+
 [node name="Spacer1" type="Control" parent="TopBar/VBox/Row1"]
 size_flags_horizontal = 3
 

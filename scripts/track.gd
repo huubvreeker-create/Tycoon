@@ -381,8 +381,9 @@ func _add_kart_node(initial_spawn: bool) -> void:
 # --- Customer simulation ---------------------------------------------------
 func _tick_arrivals(delta: float) -> void:
 	var base_interval: float = max(1.6, 4.0 - GameManager.reputation * 0.02)
-	# Marketing staff make arrivals more frequent (shorter interval).
-	var interval: float = base_interval / Staff.marketing_arrival_multiplier()
+	# Marketing staff and daily events scale the arrival interval.
+	var rate := Staff.marketing_arrival_multiplier() * DailyEvents.arrival_multiplier_today
+	var interval: float = base_interval / maxf(rate, 0.1)
 	_arrival_timer += delta
 	if _arrival_timer >= interval:
 		_arrival_timer = 0.0
@@ -455,8 +456,11 @@ func _finish_race(c: Customer) -> void:
 		kart.set_racing(false)
 	c.compute_satisfaction(track_tier(), kart_tier(), GameManager.ticket_price)
 	var payment := c.compute_payment(GameManager.ticket_price)
-	# Apply engine revenue multiplier and lighting multiplier.
-	var multiplied := int(round(payment * KartComponents.engine_revenue_multiplier() * Facilities.lighting_revenue_multiplier()))
+	# Apply engine, lighting and daily-event revenue multipliers.
+	var multiplied := int(round(payment
+		* KartComponents.engine_revenue_multiplier()
+		* Facilities.lighting_revenue_multiplier()
+		* DailyEvents.revenue_multiplier_today))
 	EconomyManager.add_revenue("Ticket", multiplied)
 	# Cafeteria bonus: extra spend per visiting customer.
 	var cafe_bonus := int(Facilities.cafeteria_revenue_per_customer())
@@ -482,5 +486,6 @@ func _on_day_ended(_summary: Dictionary) -> void:
 	var maintenance := int(round(base_maintenance
 		* KartComponents.chassis_maintenance_multiplier()
 		* Facilities.pit_lane_maintenance_multiplier()
-		* Staff.mechanic_maintenance_multiplier()))
+		* Staff.mechanic_maintenance_multiplier()
+		* DailyEvents.maintenance_multiplier_today))
 	EconomyManager.log_expense("Maintenance", maintenance)

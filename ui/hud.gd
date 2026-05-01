@@ -22,6 +22,7 @@ signal buy_kart_pressed
 @onready var buy_kart_button: Button     = %BuyKartButton
 @onready var alert_label: Label          = %AlertLabel
 @onready var alert_timer: Timer          = %AlertTimer
+@onready var event_tag: Label            = %EventTag
 
 var _venue_name: String = "Hometown Indoor"
 var _track_tier: int = 1
@@ -42,6 +43,8 @@ func _ready() -> void:
 	EventBus.track_tier_changed.connect(_on_track_tier_changed)
 	EventBus.track_level_changed.connect(_on_track_level_changed)
 	EventBus.kart_count_changed.connect(_on_kart_count_changed)
+	EventBus.daily_event_triggered.connect(_on_daily_event)
+	EventBus.day_changed.connect(_on_day_started)
 
 	ticket_minus.pressed.connect(func(): GameManager.bump_ticket_price(-GameManager.TICKET_STEP))
 	ticket_plus.pressed.connect(func():  GameManager.bump_ticket_price( GameManager.TICKET_STEP))
@@ -149,6 +152,32 @@ func _on_day_ended(summary: Dictionary) -> void:
 
 func _on_kart_count_changed(_count: int, _capacity: int) -> void:
 	_refresh_buy_button()
+
+
+func _on_daily_event(event: Dictionary) -> void:
+	var prefix: String = "GOOD" if event.get("good", false) else "BAD"
+	_flash(
+		"%s — %s: %s" % [prefix, event.get("title", "Event"), event.get("text", "")],
+		event.get("color", Color(0.95, 0.97, 1.0)),
+		6.0
+	)
+	_show_event_tag(event)
+
+
+func _on_day_started(_day: int) -> void:
+	# Clear the persistent tag at the start of every day; if a new event
+	# triggers it will be re-shown by _on_daily_event.
+	if event_tag:
+		event_tag.text = ""
+		event_tag.visible = false
+
+
+func _show_event_tag(event: Dictionary) -> void:
+	if event_tag == null:
+		return
+	event_tag.text = "● %s" % event.get("title", "Event")
+	event_tag.add_theme_color_override("font_color", event.get("color", Color(0.95, 0.97, 1.0)))
+	event_tag.visible = true
 
 
 func _on_buy_kart_pressed() -> void:

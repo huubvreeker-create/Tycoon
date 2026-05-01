@@ -42,6 +42,9 @@ signal kart_component_upgraded(component: String, new_level: int)
 # --- Facilities -------------------------------------------------------------
 signal facility_upgraded(facility: String, new_level: int)
 
+# --- Daily events -----------------------------------------------------------
+signal daily_event_triggered(event: Dictionary)
+
 # --- Staff / world events (future) -----------------------------------------
 signal staff_hired(role: String)
 signal world_event_triggered(event_id: String, payload: Dictionary)
