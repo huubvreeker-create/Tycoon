@@ -67,13 +67,154 @@ const TIER_ASPHALT_WIDTH := {
 	1: 3.0, 2: 3.4, 3: 3.8, 4: 4.2, 5: 4.6,
 	6: 5.0, 7: 5.4, 8: 5.8, 9: 6.4, 10: 7.0
 }
-const TIER_WAVE_FREQ := {
-	1: 0, 2: 0, 3: 2, 4: 3, 5: 4,
-	6: 5, 7: 6, 8: 7, 9: 8, 10: 8
+## Per-tier track LAYOUT recipes. Each tier produces a fundamentally
+## different shape (not just a scaled oval). Features:
+##
+##   chicanes: array of {start, end, amp, lobes}
+##     A perpendicular sin-wave displacement of `lobes` half-cycles
+##     across the [start, end] arc. Pushes alternately inward and
+##     outward, creating left-right wiggles ("S-bends" / chicanes).
+##   kinks: array of {center, half_width, indent}
+##     Smooth INWARD pull centred at angle `center`, dropping off over
+##     `half_width` radians on each side. Models a hairpin-style
+##     detour into the infield.
+##   taper: optional float — base oval is multiplied by
+##     (1 + taper * cos(t)), squashing the east end if positive or the
+##     west if negative. Default 0.
+##   y_taper: optional float — same idea but multiplies along Z so the
+##     north or south end gets squashed (egg shape). Default 0.
+const TIER_LAYOUT := {
+	# Tier 1 — pure backyard oval.
+	1: { "chicanes": [], "kinks": [], "taper": 0.0, "y_taper": 0.0 },
+	# Tier 2 — first chicane on the south straight (between cafeteria
+	# and merch shop) — a single S-bend.
+	2: {
+		"chicanes": [
+			{"start": 3.85, "end": 5.55, "amp": 1.4, "lobes": 1},
+		],
+		"kinks": [], "taper": 0.0, "y_taper": 0.0
+	},
+	# Tier 3 — egg shape (north narrows) plus a north-side kink so the
+	# track really doesn't read as an oval anymore.
+	3: {
+		"chicanes": [
+			{"start": 3.85, "end": 5.55, "amp": 1.6, "lobes": 1},
+		],
+		"kinks": [
+			{"center": PI * 0.5, "half_width": 0.55, "indent": 1.6},
+		],
+		"taper": 0.0, "y_taper": -0.18
+	},
+	# Tier 4 — double chicane on the south + a small east-side kink
+	# (early infield "hairpin" feel without a full loop-back).
+	4: {
+		"chicanes": [
+			{"start": 3.55, "end": 4.70, "amp": 1.8, "lobes": 1},
+			{"start": 4.85, "end": 5.95, "amp": 1.8, "lobes": 1},
+		],
+		"kinks": [
+			{"center": 0.0, "half_width": 0.50, "indent": 2.0},
+		],
+		"taper": 0.0, "y_taper": 0.0
+	},
+	# Tier 5 — south double chicane + north chicane + east kink.
+	5: {
+		"chicanes": [
+			{"start": 3.55, "end": 4.70, "amp": 2.0, "lobes": 1},
+			{"start": 4.85, "end": 5.95, "amp": 2.0, "lobes": 1},
+			{"start": 0.55, "end": 1.65, "amp": 1.6, "lobes": 1},
+		],
+		"kinks": [
+			{"center": 0.0, "half_width": 0.55, "indent": 2.4},
+		],
+		"taper": 0.10, "y_taper": 0.0
+	},
+	# Tier 6 — three chicanes spaced around the lap + west-side kink.
+	# Track loses any oval feel.
+	6: {
+		"chicanes": [
+			{"start": 0.45, "end": 1.65, "amp": 2.2, "lobes": 1},
+			{"start": 2.10, "end": 3.05, "amp": 1.8, "lobes": 1},
+			{"start": 3.85, "end": 5.55, "amp": 2.4, "lobes": 1},
+		],
+		"kinks": [
+			{"center": PI, "half_width": 0.55, "indent": 2.6},
+		],
+		"taper": -0.08, "y_taper": -0.10
+	},
+	# Tier 7 — heavier chicanes with TWO lobes (longer S-section) +
+	# both east AND west kinks.
+	7: {
+		"chicanes": [
+			{"start": 0.40, "end": 1.80, "amp": 2.6, "lobes": 2},
+			{"start": 3.55, "end": 5.85, "amp": 2.8, "lobes": 2},
+		],
+		"kinks": [
+			{"center": 0.0, "half_width": 0.60, "indent": 2.6},
+			{"center": PI, "half_width": 0.60, "indent": 2.6},
+		],
+		"taper": 0.0, "y_taper": 0.0
+	},
+	# Tier 8 — wide complex with multiple chicane sections + asymmetric
+	# kinks.
+	8: {
+		"chicanes": [
+			{"start": 0.30, "end": 1.30, "amp": 3.0, "lobes": 1},
+			{"start": 1.60, "end": 2.85, "amp": 2.6, "lobes": 2},
+			{"start": 3.50, "end": 4.60, "amp": 3.2, "lobes": 1},
+			{"start": 4.85, "end": 5.95, "amp": 2.6, "lobes": 1},
+		],
+		"kinks": [
+			{"center": 0.0, "half_width": 0.50, "indent": 3.0},
+			{"center": PI, "half_width": 0.55, "indent": 2.4},
+		],
+		"taper": 0.06, "y_taper": -0.06
+	},
+	# Tier 9 — Spa-ish: long sweeping S-curves connecting straights,
+	# multiple chicanes around the lap.
+	9: {
+		"chicanes": [
+			{"start": 0.20, "end": 1.50, "amp": 3.4, "lobes": 2},
+			{"start": 1.80, "end": 2.90, "amp": 2.8, "lobes": 1},
+			{"start": 3.40, "end": 4.85, "amp": 3.6, "lobes": 2},
+			{"start": 5.05, "end": 6.05, "amp": 2.8, "lobes": 1},
+		],
+		"kinks": [
+			{"center": 0.0, "half_width": 0.60, "indent": 3.2},
+			{"center": PI, "half_width": 0.60, "indent": 3.2},
+		],
+		"taper": -0.05, "y_taper": -0.05
+	},
+	# Tier 10 — full F1: maximum complexity, every section different.
+	10: {
+		"chicanes": [
+			{"start": 0.20, "end": 1.10, "amp": 3.6, "lobes": 1},
+			{"start": 1.40, "end": 2.40, "amp": 3.2, "lobes": 2},
+			{"start": 2.65, "end": 3.20, "amp": 2.4, "lobes": 1},
+			{"start": 3.55, "end": 4.55, "amp": 4.0, "lobes": 2},
+			{"start": 4.80, "end": 5.50, "amp": 3.0, "lobes": 1},
+			{"start": 5.70, "end": 6.20, "amp": 2.4, "lobes": 1},
+		],
+		"kinks": [
+			{"center": 0.0, "half_width": 0.55, "indent": 3.6},
+			{"center": PI, "half_width": 0.55, "indent": 3.6},
+		],
+		"taper": 0.04, "y_taper": -0.04
+	},
 }
+
+# TIER_WAVE_AMP — the maximum OUTWARD displacement of any feature in
+# the tier's layout. Used by facility positioning so buildings,
+# sponsors and lights always sit clear of the wobbliest chicane.
 const TIER_WAVE_AMP := {
-	1: 0.0, 2: 0.0, 3: 1.0, 4: 1.5, 5: 2.0,
-	6: 2.5, 7: 3.0, 8: 3.5, 9: 4.0, 10: 4.5
+	1: 0.0, 2: 1.4, 3: 1.6, 4: 1.8, 5: 2.0,
+	6: 2.4, 7: 2.8, 8: 3.2, 9: 3.6, 10: 4.0
+}
+# Legacy — no longer drives the curve shape; kept so external code
+# referencing it still gets a sensible value.
+const TIER_WAVE_FREQ := {
+	1: 0, 2: 1, 3: 1, 4: 2, 5: 3,
+	6: 3, 7: 4, 8: 5, 9: 6, 10: 7
 }
 const TIER_RIBBON_COLOR := {
 	1: Color(0.40, 0.65, 1.00),
@@ -407,24 +548,94 @@ func _build_path() -> void:
 	path = Path3D.new()
 	path.name = "RacePath"
 	add_child(path)
+	path.curve = _make_layout_curve(track_tier())
+
+
+# Sample the per-tier layout into a closed Curve3D with PATH_SEGMENTS
+# points. Each tier's recipe in TIER_LAYOUT defines a unique shape:
+# pure oval, single chicane, double chicane, hairpin-style kinks,
+# multi-S-bend complex, etc.
+func _make_layout_curve(tier: int) -> Curve3D:
 	var curve := Curve3D.new()
-	var rx: float = current_rx()
-	var rz: float = current_rz()
-	var freq: int = current_wave_freq()
-	var amp: float = current_wave_amp()
 	for i in range(PATH_SEGMENTS):
-		var t := float(i) / float(PATH_SEGMENTS) * TAU
-		var base_x := cos(t) * rx
-		var base_z := sin(t) * rz
-		var n := Vector2(cos(t) / rx, sin(t) / rz).normalized()
-		var wobble := 0.0
-		if freq > 0:
-			wobble = sin(t * freq) * amp
-		var p := Vector3(base_x + n.x * wobble, 0.0, base_z + n.y * wobble)
-		curve.add_point(p)
+		var t: float = float(i) / float(PATH_SEGMENTS) * TAU
+		curve.add_point(_layout_curve_point(t, tier))
 	# Close the loop by adding a final point coincident with the first.
 	curve.add_point(curve.get_point_position(0))
-	path.curve = curve
+	return curve
+
+
+# Compute a single point on the tier's track curve. Builds on top of
+# the base oval (rx*cos(t), rz*sin(t)) with optional asymmetric taper
+# along X (taper) and Z (y_taper), then layers chicane S-bends and
+# inward kinks per the layout recipe.
+func _layout_curve_point(t: float, tier: int) -> Vector3:
+	var rx: float = float(TIER_TRACK_RX[tier])
+	var rz: float = float(TIER_TRACK_RZ[tier])
+	var layout: Dictionary = TIER_LAYOUT[tier]
+	var taper: float = float(layout.get("taper", 0.0))
+	var y_taper: float = float(layout.get("y_taper", 0.0))
+
+	# Base oval with optional axis tapers — taper>0 pulls the EAST side
+	# in, taper<0 pulls the WEST side in. Same for y_taper along Z.
+	var rx_t: float = rx * (1.0 + taper * cos(t))
+	var rz_t: float = rz * (1.0 + y_taper * sin(t))
+	var base_x: float = cos(t) * rx_t
+	var base_z: float = sin(t) * rz_t
+
+	# Outward normal at this oval point (radial direction).
+	var nrm := Vector2(rz_t * cos(t), rx_t * sin(t))
+	if nrm.length() < 0.001:
+		nrm = Vector2(1.0, 0.0)
+	nrm = nrm.normalized()
+
+	var dx: float = 0.0
+	var dz: float = 0.0
+
+	# Chicanes — alternating sin-wave perpendicular displacements over
+	# specific arc windows.
+	var chicanes: Array = layout.get("chicanes", [])
+	for c: Dictionary in chicanes:
+		var c_start: float = float(c.start)
+		var c_end: float = float(c.end)
+		if t < c_start or t > c_end:
+			continue
+		var local_t: float = (t - c_start) / (c_end - c_start)  # 0..1
+		var lobes: int = int(c.get("lobes", 1))
+		# sin(2π * lobes * local_t) gives `lobes` full cycles → each
+		# lobe is one inward+outward swing. Multiply by an in/out
+		# fade so the chicane joins the rest of the curve smoothly.
+		var fade: float = sin(local_t * PI)  # 0 at edges, 1 at midpoint
+		var wave: float = sin(local_t * TAU * float(lobes))
+		var amp: float = float(c.amp)
+		var displacement: float = wave * fade * amp
+		dx += nrm.x * displacement
+		dz += nrm.y * displacement
+
+	# Kinks — smooth INWARD-only pull centred at a specific angle.
+	# Useful for single-corner detours that look like hairpins from
+	# above without breaking the closed-loop topology.
+	var kinks: Array = layout.get("kinks", [])
+	for k: Dictionary in kinks:
+		var k_center: float = float(k.center)
+		var k_hw: float = float(k.half_width)
+		var k_indent: float = float(k.indent)
+		# Wrap the angular distance across the [0, TAU) seam.
+		var raw_dt: float = t - k_center
+		while raw_dt > PI:
+			raw_dt -= TAU
+		while raw_dt < -PI:
+			raw_dt += TAU
+		var dt: float = absf(raw_dt)
+		if dt > k_hw:
+			continue
+		# Cosine bell — smooth 1.0 at centre, 0.0 at the half-width edges.
+		var bell: float = 0.5 * (1.0 + cos(dt / k_hw * PI))
+		# Pull INWARD = subtract along the outward normal.
+		dx -= nrm.x * k_indent * bell
+		dz -= nrm.y * k_indent * bell
+
+	return Vector3(base_x + dx, 0.0, base_z + dz)
 
 
 func _build_asphalt() -> void:
@@ -500,26 +711,13 @@ func _build_click_area() -> void:
 
 func _refresh_track_geometry() -> void:
 	# Lightweight in-place rebuild of the path curve + CSG polygon
-	# widths so each per-level upgrade visibly grows the track without
-	# tearing down all the nodes (and re-parenting the karts).
+	# widths so a tier rollover swaps the layout without tearing down
+	# the nodes (and re-parenting the karts).
 	if path == null or asphalt_csg == null or rumble_csg == null:
 		return
 	var rx: float = current_rx()
 	var rz: float = current_rz()
-	var freq: int = current_wave_freq()
-	var amp: float = current_wave_amp()
-	var curve := Curve3D.new()
-	for i in range(PATH_SEGMENTS):
-		var t: float = float(i) / float(PATH_SEGMENTS) * TAU
-		var base_x: float = cos(t) * rx
-		var base_z: float = sin(t) * rz
-		var n: Vector2 = Vector2(cos(t) / rx, sin(t) / rz).normalized()
-		var wobble: float = 0.0
-		if freq > 0:
-			wobble = sin(t * float(freq)) * amp
-		curve.add_point(Vector3(base_x + n.x * wobble, 0.0, base_z + n.y * wobble))
-	curve.add_point(curve.get_point_position(0))
-	path.curve = curve
+	path.curve = _make_layout_curve(track_tier())
 	# Asphalt + rumble polygon widths.
 	var w: float = current_asphalt_width()
 	asphalt_csg.polygon = PackedVector2Array([
