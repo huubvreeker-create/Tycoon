@@ -5,10 +5,10 @@ extends Node
 ## rather than mutating cash directly.
 ##
 
-# TEMPORARY for testing — bumped from 5_000 so the player can buy
-# everything immediately to inspect the visual result. Revert to
-# 5_000 once playtesting is done.
-const STARTING_CASH: int = 5_000_000
+# TEMPORARY for testing — absurdly bumped so the player can buy
+# anything at any tier without waiting. Revert to 5_000 once
+# playtesting is done.
+const STARTING_CASH: int = 1_000_000_000_000_000_000  # 1 quintillion (= 10^18)
 
 var cash: int = STARTING_CASH
 
