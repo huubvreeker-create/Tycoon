@@ -602,9 +602,14 @@ func _build_start_finish() -> void:
 	pmat.emission = Color(0.96, 0.97, 1.0)
 	pmat.emission_energy_multiplier = 0.5
 	podium.material_override = pmat
-	# Offset the podium perpendicular to the track to one side.
-	var perp := Vector3(-tangent.z, 0, tangent.x).normalized()
-	podium.position = start_pos + perp * (w * 0.55 + 0.4) + Vector3(0, 0.8, 0)
+	# Outward perpendicular = the side that points AWAY from the oval
+	# centre. With the curve parametrised counter-clockwise this is
+	# (tangent.z, 0, -tangent.x) — used to push the podium to grass.
+	var perp_out: Vector3 = Vector3(tangent.z, 0, -tangent.x).normalized()
+	podium.position = start_pos + perp_out * (w * 0.55 + 0.4) + Vector3(0, 0.8, 0)
+	# Inward perp (opposite direction) keeps the grid markers ON the
+	# asphalt; alternating ± gives the staggered F1 grid layout.
+	var perp_grid: Vector3 = -perp_out
 	start_finish_root.add_child(podium)
 
 	# Starting-grid markers behind the finish line, alternating sides
@@ -616,7 +621,7 @@ func _build_start_finish() -> void:
 		var side_sign: float = -1.0 if (i % 2 == 0) else 1.0
 		var marker_pos: Vector3 = start_pos \
 			- tangent * back_distance \
-			+ perp * (side_sign * w * 0.22)
+			+ perp_grid * (side_sign * w * 0.22)
 		var marker := MeshInstance3D.new()
 		var mbm := BoxMesh.new()
 		mbm.size = Vector3(0.6, 0.05, 0.30)

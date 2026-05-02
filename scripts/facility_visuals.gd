@@ -87,11 +87,26 @@ func _rebuild_one(facility: String) -> void:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+# Use the LIVE track radii (which interpolate continuously between
+# tiers) so facilities reposition smoothly each upgrade tap.
 func _track_rx() -> float:
-	return _track.TIER_TRACK_RX[_track.track_tier()]
+	return _track.current_rx()
 
 func _track_rz() -> float:
-	return _track.TIER_TRACK_RZ[_track.track_tier()]
+	return _track.current_rz()
+
+# Outer extent of the asphalt (= rumble-strip outer edge) in world units
+# along each axis. Uses the live (interpolated) track values so it stays
+# in sync with per-level track growth, plus the rumble inset baseline.
+const _RUMBLE_INSET_VAL: float = 0.18
+
+func _track_outer_x(margin: float = 0.0) -> float:
+	return _track.current_rx() + _track.current_asphalt_width() * 0.5 \
+		+ _track.current_wave_amp() + _RUMBLE_INSET_VAL + margin
+
+func _track_outer_z(margin: float = 0.0) -> float:
+	return _track.current_rz() + _track.current_asphalt_width() * 0.5 \
+		+ _track.current_wave_amp() + _RUMBLE_INSET_VAL + margin
 
 func _make_box(parent: Node3D, size: Vector3, pos: Vector3, color: Color, emissive: float = 0.0) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
@@ -152,13 +167,19 @@ func _add_facility_click_area(parent: Node3D, facility_id: String, center: Vecto
 func _build_cafeteria(parent: Node3D, level: int) -> void:
 	# A real café: main building + covered patio + tables with parasols
 	# + signage on the front.  Sits on the LEFT (-X) side of the venue.
-	var rx := _track_rx()
 	var w: float = 5.0 + level * 0.18
 	var d: float = 4.5 + level * 0.16
 	var h: float = 3.0 + level * 0.12
-	# Building far enough out that the patio in front of it never touches
-	# the track's rumble strip, even at high facility levels.
-	var building_pos := Vector3(-rx - 12.0 - w * 0.5, h * 0.5, 0.0)
+	var patio_d: float = 2.5 + level * 0.08
+	# The patio extends from the building toward the track. Anchor the
+	# patio's near edge at (track outer + safety) so it never clips the
+	# rumble strip — works at every tier and every facility level.
+	const SAFETY: float = 4.0
+	var patio_near_x: float = -_track_outer_x(SAFETY)
+	# patio_near_x = patio_pos.x - patio_d * 0.5
+	# patio_pos.x  = building_pos.x + w * 0.5 + patio_d * 0.5
+	# building_pos.x = patio_near_x - w * 0.5 - patio_d
+	var building_pos := Vector3(patio_near_x - w * 0.5 - patio_d, h * 0.5, 0.0)
 
 	# Main building.
 	_make_box(parent, Vector3(w, h, d), building_pos, _CAFETERIA_COLOR.darkened(0.55))
@@ -169,7 +190,6 @@ func _build_cafeteria(parent: Node3D, level: int) -> void:
 		Vector3(0.06, 0.40, d * 0.85))
 
 	# Patio in front of the building (between building and track).
-	var patio_d: float = 2.5 + level * 0.08
 	var patio_pos: Vector3 = building_pos + Vector3(w * 0.5 + patio_d * 0.5, -h * 0.5 + 0.05, 0)
 	_make_box(parent, Vector3(patio_d, 0.10, d * 0.95),
 		patio_pos, _CAFETERIA_COLOR.darkened(0.7))
@@ -231,8 +251,12 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 	# Pit straight runs along the long axis (X) on the +Z side.
 	var pit_lane_width: float = 2.6 + level * 0.06
 	var pit_lane_length: float = rx * 1.2
-	# Sit the pit lane comfortably outside the track's rumble strip.
-	var pit_lane_z: float = rz + 5.0 + pit_lane_width * 0.5
+	# Anchor the pit-lane's NEAR edge (the side facing the track) at
+	# `track_outer_z + SAFETY` so it never overlaps the rumble strip,
+	# even at high tiers where the chicane wave pushes the asphalt
+	# outward by several metres.
+	const SAFETY: float = 3.0
+	var pit_lane_z: float = _track_outer_z(SAFETY) + pit_lane_width * 0.5
 	# Asphalt
 	_make_box(parent, Vector3(pit_lane_length, 0.08, pit_lane_width),
 		Vector3(0, 0.04, pit_lane_z),
@@ -286,33 +310,40 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 		Vector3(0, bay_h + 0.10, garage_z),
 		_PIT_LANE_COLOR.darkened(0.35))
 
-	# Connector slips at the two ends of the pit straight, actually
-	# bridging the gap between the pit lane and the main track. Each
-	# connector is a long thin asphalt slab whose midpoint sits in the
-	# gap (z = midway between track edge and pit lane) and whose long
-	# axis points from the pit lane straight toward the track edge.
+	# Connector slips bridging the pit straight to the main track.
+	# Each end of the pit lane gets a connector whose START is the end
+	# of the pit straight, and whose END sits ON the track oval at
+	# 60° (right side) or 120° (left side) — so the slip visibly
+	# merges into the asphalt instead of dangling in empty space.
 	var connector_width: float = pit_lane_width * 0.85
-	var gap_z: float = pit_lane_z - rz                  # asphalt-to-asphalt gap
-	var x_run: float = 4.0                              # how far the connector tilts in X
-	var connector_length: float = sqrt(gap_z * gap_z + x_run * x_run) + 1.0
 	for sign_x: int in [-1, 1]:
-		var pit_end_x: float = float(sign_x) * (pit_lane_length * 0.5)
-		var track_end_x: float = pit_end_x - float(sign_x) * x_run
-		var mid_x: float = (pit_end_x + track_end_x) * 0.5
-		var mid_z: float = (pit_lane_z + rz) * 0.5
+		var start_pos := Vector3(float(sign_x) * pit_lane_length * 0.5, 0.04, pit_lane_z)
+		# Angle on the oval: 60° on the +X side, 120° on the -X side.
+		var t_angle: float = (PI / 3.0) if sign_x > 0 else (2.0 * PI / 3.0)
+		# Push the endpoint slightly OUTSIDE the rumble strip along
+		# the oval's outward normal, so the connector visibly overlaps
+		# the asphalt's outer edge.
+		var oval_x: float = rx * cos(t_angle)
+		var oval_z: float = rz * sin(t_angle)
+		var n_raw := Vector2(rz * cos(t_angle), rx * sin(t_angle))
+		var n := n_raw.normalized()
+		var outer_offset: float = _track.current_asphalt_width() * 0.5 + _track.current_wave_amp() + _RUMBLE_INSET_VAL
+		var end_pos := Vector3(oval_x + n.x * outer_offset, 0.04, oval_z + n.y * outer_offset)
+		var direction := end_pos - start_pos
+		var length: float = direction.length()
+		if length < 0.01:
+			continue
+		var center := (start_pos + end_pos) * 0.5
 		var connector := MeshInstance3D.new()
 		var bm := BoxMesh.new()
-		bm.size = Vector3(connector_length, 0.08, connector_width)
+		bm.size = Vector3(length, 0.08, connector_width)
 		connector.mesh = bm
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = asphalt_color
 		mat.roughness = 0.85
 		connector.material_override = mat
-		connector.position = Vector3(mid_x, 0.04, mid_z)
-		# Long axis (local +X) should point from pit_end → track_end.
-		var dx: float = track_end_x - pit_end_x
-		var dz: float = rz - pit_lane_z       # negative (track is at smaller z)
-		connector.rotation.y = atan2(-dz, dx)
+		connector.position = center
+		connector.rotation.y = atan2(-direction.z, direction.x)
 		parent.add_child(connector)
 
 	# One large click area covering the pit straight + garages.
@@ -326,13 +357,15 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 func _build_lounge(parent: Node3D, level: int) -> void:
 	# Multi-storey hospitality block with glass strips on three sides and
 	# a roof terrace. Scales taller with level.
-	var rz := _track_rz()
 	var w: float = 5.0 + level * 0.18
 	var d: float = 5.0 + level * 0.18
 	var floors: int = clampi(2 + level / 3, 2, 6)
 	var floor_h: float = 1.4
 	var h: float = floor_h * float(floors) + 0.6
-	var pos := Vector3(0.0, h * 0.5, -rz - 7.0 - d * 0.3)
+	# Sit BEHIND the grandstand on the -Z spectator side, with enough
+	# margin that the grandstand has room between the lounge and track.
+	const SAFETY: float = 9.0
+	var pos := Vector3(0.0, h * 0.5, -_track_outer_z(SAFETY) - d * 0.5)
 
 	# Main tower
 	_make_box(parent, Vector3(w, h, d), pos, _LOUNGE_COLOR.darkened(0.55))
@@ -382,12 +415,18 @@ func _build_lounge(parent: Node3D, level: int) -> void:
 func _build_merch_shop(parent: Node3D, level: int) -> void:
 	# Green kiosk at the +X end of the venue (other end from the
 	# cafeteria — we leave +Z free for the pit complex).
-	var rx := _track_rx()
 	var w: float = 3.5 + level * 0.18
 	var d: float = 3.0 + level * 0.14
 	var h: float = 2.2 + level * 0.10
-	# Far enough out that the awning in front never touches the track.
-	var pos := Vector3(rx + 8.0 + w * 0.5, h * 0.5, 0.0)
+	# Awning extends w*0.4 toward the track from the building's near
+	# edge, so anchor that NEAR edge of the awning at track_outer + safety.
+	const SAFETY: float = 4.0
+	var awning_extent: float = w * 0.4
+	# pos.x = building center; building near edge = pos.x - w/2;
+	# awning near edge = pos.x - w/2 - awning_extent
+	# We want awning near edge = +track_outer + safety
+	# => pos.x = track_outer + safety + awning_extent + w/2
+	var pos := Vector3(_track_outer_x(SAFETY) + awning_extent + w * 0.5, h * 0.5, 0.0)
 	_make_box(parent, Vector3(w, h, d), pos, _MERCH_COLOR.darkened(0.55))
 	# Sign band on the side facing the track.
 	_make_label_strip(parent, _MERCH_COLOR,
@@ -514,14 +553,15 @@ func _build_grandstand(parent: Node3D, level: int) -> void:
 	# track tier — a tier-4 venue's stands are bigger than a tier-1
 	# venue's at the same facility level.
 	var tier_scale: float = 1.0 + (_track.track_tier() - 1) * 0.30
-	var rx := _track_rx()
-	var rz := _track_rz()
 
 	# Main stand on the spectator side (-Z), opposite the pit complex.
+	# Anchor the FRONT (track-facing) edge at -(track_outer + safety)
+	# so the bottom row never sits on the rumble strip at any tier.
 	var main_w: float = (8.0 + level * 0.55) * tier_scale
 	var main_d: float = 2.6 + level * 0.10
 	var main_h: float = (1.2 + level * 0.18) * tier_scale
-	var main_z: float = -rz - 1.8 - main_d * 0.5
+	const MAIN_SAFETY: float = 1.5
+	var main_z: float = -_track_outer_z(MAIN_SAFETY) - main_d * 0.5
 	_make_grandstand_block(parent, Vector3(0, 0, main_z),
 		Vector3(main_w, main_h, main_d), level, false)
 
@@ -531,13 +571,15 @@ func _build_grandstand(parent: Node3D, level: int) -> void:
 		var side_w: float = (5.0 + side_levels * 0.4) * tier_scale
 		var side_d: float = 2.4 + side_levels * 0.08
 		var side_h: float = (1.0 + side_levels * 0.12) * tier_scale
+		const SIDE_SAFETY: float = 1.5
+		var side_x_offset: float = _track_outer_x(SIDE_SAFETY) + side_d * 0.5
 		# West stand at -X end
 		_make_grandstand_block(parent,
-			Vector3(-rx - 1.8 - side_d * 0.5, 0, 0),
+			Vector3(-side_x_offset, 0, 0),
 			Vector3(side_d, side_h, side_w), side_levels, true)
 		# East stand at +X end
 		_make_grandstand_block(parent,
-			Vector3(rx + 1.8 + side_d * 0.5, 0, 0),
+			Vector3(side_x_offset, 0, 0),
 			Vector3(side_d, side_h, side_w), side_levels, true)
 
 	# One large click area covering the main stand area.
@@ -608,8 +650,6 @@ func _build_parking(parent: Node3D, level: int) -> void:
 	# A flat asphalt slab outside the venue with painted parking-space
 	# lines and a few visiting cars. Sits in the (-X, -Z) corner so it
 	# doesn't fight any other facility for space.
-	var rx := _track_rx()
-	var rz := _track_rz()
 
 	# More rows / cols as the lot is upgraded.
 	var rows: int = clampi(2 + level / 6, 2, 12)
@@ -618,10 +658,14 @@ func _build_parking(parent: Node3D, level: int) -> void:
 	var space_d: float = 2.8
 	var lot_w: float = float(cols) * space_w
 	var lot_d: float = float(rows) * space_d
+	# Anchor against track outer + safety so it never overlaps the
+	# track at any tier.
+	const SAFETY_X: float = 5.0
+	const SAFETY_Z: float = 4.0
 	var center := Vector3(
-		-rx - 6.0 - lot_w * 0.5,
+		-_track_outer_x(SAFETY_X) - lot_w * 0.5,
 		0.05,
-		-rz - 4.0 - lot_d * 0.5
+		-_track_outer_z(SAFETY_Z) - lot_d * 0.5
 	)
 
 	# Asphalt slab.
@@ -689,10 +733,11 @@ func _build_marketing(parent: Node3D, level: int) -> void:
 	# Marketing tower: tall pole with a glowing billboard at the top.
 	# Sits at the (+X, +Z) corner, away from cafeteria / merch / pit
 	# / lounge / parking. Pole + billboard scale with level.
-	var rx := _track_rx()
-	var rz := _track_rz()
 	var pole_h: float = 5.5 + float(level) * 0.35
-	var pos := Vector3(rx + 4.0, 0.0, rz + 4.0)
+	# Anchor against track outer + safety so the pole never sits on
+	# the rumble strip at any tier.
+	const SAFETY: float = 3.5
+	var pos := Vector3(_track_outer_x(SAFETY), 0.0, _track_outer_z(SAFETY))
 
 	# Pole (dark metal)
 	var pole := MeshInstance3D.new()
