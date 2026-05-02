@@ -16,6 +16,7 @@ const _BUILD_COST := {
 	"lighting":      700.0,
 	"grandstand":    600.0,
 	"parking":       450.0,
+	"marketing":     700.0,
 }
 
 # Track-tier required to BUILD or UPGRADE each facility. Locked facilities
@@ -28,6 +29,7 @@ const _REQUIRED_TRACK_TIER := {
 	"parking":        2,
 	"sponsor_boards": 3,
 	"grandstand":     3,
+	"marketing":      3,
 	"lounge":         4,
 	"lighting":       5,
 }
@@ -41,17 +43,19 @@ const _NAMES := {
 	"lighting":       "Lighting Rigs",
 	"grandstand":     "Grandstands",
 	"parking":        "Parking Lot",
+	"marketing":      "Marketing Tower",
 }
 
 const _DESCRIPTIONS := {
 	"cafeteria":      "Food revenue per customer + satisfaction",
-	"pit_lane":       "Faster races + lower maintenance",
-	"lounge":         "VIP multiplier + reputation per race",
-	"merch_shop":     "Passive daily income",
+	"pit_lane":       "Pit revenue + faster races + lower maintenance",
+	"lounge":         "VIP fees + satisfaction + reputation per race",
+	"merch_shop":     "Passive daily income from merchandise",
 	"sponsor_boards": "Sponsor revenue every day",
-	"lighting":       "Night atmosphere + revenue multiplier",
+	"lighting":       "Night-event income + revenue multiplier",
 	"grandstand":     "Spectator income + reputation per race",
-	"parking":        "More parking spaces → more daily visitors",
+	"parking":        "Caps simultaneous visitors — full = no new arrivals",
+	"marketing":      "Promote the venue → more visitors per day",
 }
 
 var cafeteria_level:      int = 0
@@ -62,6 +66,7 @@ var sponsor_boards_level: int = 0
 var lighting_level:       int = 0
 var grandstand_level:     int = 0
 var parking_level:        int = 0
+var marketing_level:      int = 0
 
 
 # --- Effects ----------------------------------------------------------------
@@ -79,6 +84,10 @@ func pit_lane_race_time_reduction() -> float:
 func pit_lane_maintenance_multiplier() -> float:
 	return maxf(0.10, 1.0 - pit_lane_level * 0.012)
 
+func pit_lane_daily_income() -> int:
+	# Pit operations + paddock services bring in steady cash.
+	return int(round(40.0 * pit_lane_level * pow(1.04, float(pit_lane_level))))
+
 func lounge_satisfaction_bonus() -> float:
 	return minf(0.40, lounge_level * 0.005)
 
@@ -86,6 +95,10 @@ func lounge_reputation_per_race() -> int:
 	# +1 reputation per race for every 4 lounge levels.
 	@warning_ignore("integer_division")
 	return lounge_level / 4
+
+func lounge_daily_income() -> int:
+	# VIP membership + corporate hospitality fees.
+	return int(round(80.0 * lounge_level * pow(1.045, float(lounge_level))))
 
 func merch_daily_income() -> int:
 	# Compounds — endgame merch shop is a major income source.
@@ -98,6 +111,10 @@ func lighting_revenue_multiplier() -> float:
 	# Compounds: +1% per level, multiplicative with engine.
 	return pow(1.01, float(lighting_level))
 
+func lighting_daily_income() -> int:
+	# Night-event ticket premium / floodlit extra hours.
+	return int(round(25.0 * lighting_level * pow(1.04, float(lighting_level))))
+
 func grandstand_daily_income() -> int:
 	return int(round(40.0 * grandstand_level * pow(1.04, float(grandstand_level))))
 
@@ -105,18 +122,28 @@ func grandstand_reputation_per_race() -> int:
 	@warning_ignore("integer_division")
 	return grandstand_level / 5
 
-func parking_arrival_multiplier() -> float:
-	# Each parking level adds +5% to the customer arrival rate
-	# (caps the gain at +200% so it doesn't dominate the simulation).
-	return minf(3.0, 1.0 + parking_level * 0.05)
+func parking_visitor_capacity() -> int:
+	# Hard cap on simultaneous visitors at the venue. Free baseline
+	# is a small street-parking spot; each level adds 4 more spaces.
+	return 12 + parking_level * 4
+
+func marketing_arrival_multiplier() -> float:
+	# Each marketing tower level adds +6% to the arrival rate. Stacks
+	# multiplicatively with marketing-manager staff.
+	return 1.0 + marketing_level * 0.06
 
 func total_daily_passive_income() -> int:
-	return merch_daily_income() + sponsor_daily_income() + grandstand_daily_income()
+	return merch_daily_income() \
+		+ sponsor_daily_income() \
+		+ grandstand_daily_income() \
+		+ pit_lane_daily_income() \
+		+ lounge_daily_income() \
+		+ lighting_daily_income()
 
 
 # --- API --------------------------------------------------------------------
 func facility_names() -> Array[String]:
-	return ["pit_lane", "cafeteria", "merch_shop", "parking", "sponsor_boards", "grandstand", "lounge", "lighting"]
+	return ["pit_lane", "cafeteria", "merch_shop", "parking", "sponsor_boards", "grandstand", "marketing", "lounge", "lighting"]
 
 func display_name(facility: String) -> String:
 	return _NAMES.get(facility, facility)
@@ -134,6 +161,7 @@ func get_level(facility: String) -> int:
 		"lighting":       return lighting_level
 		"grandstand":     return grandstand_level
 		"parking":        return parking_level
+		"marketing":      return marketing_level
 	return 0
 
 func required_track_tier(facility: String) -> int:
@@ -175,6 +203,7 @@ func upgrade(facility: String) -> bool:
 		"lighting":       lighting_level       += 1
 		"grandstand":     grandstand_level     += 1
 		"parking":        parking_level        += 1
+		"marketing":      marketing_level      += 1
 	EventBus.facility_upgraded.emit(facility, get_level(facility))
 	return true
 
@@ -186,12 +215,14 @@ func effect_text(facility: String) -> String:
 				cafeteria_satisfaction_bonus() * 100.0
 			]
 		"pit_lane":
-			return "-%.2fs race time  %.0f%% maintenance" % [
+			return "€%d/day  -%.2fs race  %.0f%% maint." % [
+				pit_lane_daily_income(),
 				pit_lane_race_time_reduction(),
 				pit_lane_maintenance_multiplier() * 100.0
 			]
 		"lounge":
-			return "+%.1f%% satisfaction  +%d rep/race" % [
+			return "€%d/day  +%.1f%% sat.  +%d rep/race" % [
+				lounge_daily_income(),
 				lounge_satisfaction_bonus() * 100.0,
 				lounge_reputation_per_race()
 			]
@@ -200,14 +231,19 @@ func effect_text(facility: String) -> String:
 		"sponsor_boards":
 			return "€%d sponsor income/day" % [sponsor_daily_income()]
 		"lighting":
-			return "+%.1f%% revenue multiplier" % [lighting_revenue_multiplier() * 100.0 - 100.0]
+			return "€%d/day  +%.1f%% revenue mult." % [
+				lighting_daily_income(),
+				lighting_revenue_multiplier() * 100.0 - 100.0
+			]
 		"grandstand":
 			return "€%d/day  +%d rep/race" % [
 				grandstand_daily_income(),
 				grandstand_reputation_per_race()
 			]
 		"parking":
+			return "%d simultaneous visitors max" % [parking_visitor_capacity()]
+		"marketing":
 			return "+%.0f%% customer arrivals" % [
-				(parking_arrival_multiplier() - 1.0) * 100.0
+				(marketing_arrival_multiplier() - 1.0) * 100.0
 			]
 	return ""

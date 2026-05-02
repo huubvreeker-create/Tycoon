@@ -16,6 +16,7 @@ const _LOUNGE_COLOR     := Color(0.86, 0.42, 0.98)
 const _MERCH_COLOR      := Color(0.55, 0.92, 0.38)
 const _GRANDSTAND_COLOR := Color(0.65, 0.55, 0.78)
 const _PARKING_COLOR    := Color(0.40, 0.65, 1.00)
+const _MARKETING_COLOR  := Color(1.00, 0.40, 0.20)
 const _SPONSOR_COLORS := [
 	Color(0.96, 0.27, 0.36),
 	Color(0.99, 0.75, 0.18),
@@ -80,6 +81,7 @@ func _rebuild_one(facility: String) -> void:
 		"lighting":       _build_lighting(holder, level)
 		"grandstand":     _build_grandstand(holder, level)
 		"parking":        _build_parking(holder, level)
+		"marketing":      _build_marketing(holder, level)
 
 
 # ---------------------------------------------------------------------------
@@ -681,3 +683,73 @@ func _build_parking(parent: Node3D, level: int) -> void:
 	_add_facility_click_area(parent, "parking",
 		Vector3(center.x, 1.0, center.z),
 		Vector3(lot_w + 1.0, 2.0, lot_d + 1.0))
+
+
+func _build_marketing(parent: Node3D, level: int) -> void:
+	# Marketing tower: tall pole with a glowing billboard at the top.
+	# Sits at the (+X, +Z) corner, away from cafeteria / merch / pit
+	# / lounge / parking. Pole + billboard scale with level.
+	var rx := _track_rx()
+	var rz := _track_rz()
+	var pole_h: float = 5.5 + float(level) * 0.35
+	var pos := Vector3(rx + 4.0, 0.0, rz + 4.0)
+
+	# Pole (dark metal)
+	var pole := MeshInstance3D.new()
+	pole.name = "Pole"
+	var pole_mesh := BoxMesh.new()
+	pole_mesh.size = Vector3(0.30, pole_h, 0.30)
+	pole.mesh = pole_mesh
+	var pole_mat := StandardMaterial3D.new()
+	pole_mat.albedo_color = Color(0.18, 0.18, 0.22)
+	pole_mat.metallic = 0.6
+	pole_mat.roughness = 0.5
+	pole.material_override = pole_mat
+	pole.position = pos + Vector3(0, pole_h * 0.5, 0)
+	parent.add_child(pole)
+
+	# Billboard (emissive — looks like an LED display).
+	var bw: float = 3.0 + float(level) * 0.15
+	var bh: float = 1.8 + float(level) * 0.08
+	var board := MeshInstance3D.new()
+	board.name = "Billboard"
+	var board_mesh := BoxMesh.new()
+	board_mesh.size = Vector3(bw, bh, 0.20)
+	board.mesh = board_mesh
+	var board_mat := StandardMaterial3D.new()
+	board_mat.albedo_color = _MARKETING_COLOR
+	board_mat.emission_enabled = true
+	board_mat.emission = _MARKETING_COLOR
+	board_mat.emission_energy_multiplier = 1.6 + float(level) * 0.02
+	board.material_override = board_mat
+	board.position = pos + Vector3(0, pole_h + bh * 0.5, 0)
+	# Aim the billboard face toward the centre of the venue so it
+	# always reads correctly from above.
+	var to_centre: Vector3 = (-pos).normalized()
+	board.rotation.y = atan2(to_centre.x, to_centre.z)
+	parent.add_child(board)
+
+	# Side panel (a second smaller billboard at 90° on the same pole
+	# — gives the tower visual presence at higher levels).
+	if level >= 4:
+		var side_w: float = bw * 0.65
+		var side_h: float = bh * 0.55
+		var side := MeshInstance3D.new()
+		side.name = "SideBoard"
+		var side_mesh := BoxMesh.new()
+		side_mesh.size = Vector3(side_w, side_h, 0.18)
+		side.mesh = side_mesh
+		var side_mat := StandardMaterial3D.new()
+		side_mat.albedo_color = _MARKETING_COLOR.lightened(0.25)
+		side_mat.emission_enabled = true
+		side_mat.emission = _MARKETING_COLOR
+		side_mat.emission_energy_multiplier = 1.2
+		side.material_override = side_mat
+		side.position = pos + Vector3(0, pole_h + bh * 0.4, 0)
+		side.rotation.y = atan2(to_centre.x, to_centre.z) + PI * 0.5
+		parent.add_child(side)
+
+	# Click target covers the whole tower volume.
+	_add_facility_click_area(parent, "marketing",
+		pos + Vector3(0, (pole_h + bh) * 0.5, 0),
+		Vector3(maxf(bw, 1.0) + 0.6, pole_h + bh + 0.6, maxf(bw, 1.0) + 0.6))

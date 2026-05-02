@@ -679,11 +679,17 @@ func _add_kart_node(initial_spawn: bool) -> void:
 
 # --- Customer simulation ---------------------------------------------------
 func _tick_arrivals(delta: float) -> void:
+	# HARD CAP: parking lot caps simultaneous visitors. If the lot is
+	# full, no new cars / customers can arrive until somebody finishes
+	# their race and leaves.
+	var visitor_count: int = queue.size() + racing.size()
+	if visitor_count >= Facilities.parking_visitor_capacity():
+		return
 	var base_interval: float = maxf(1.6, 4.0 - GameManager.reputation * 0.02)
-	# Marketing staff, parking capacity and daily events all scale the
-	# arrival interval (more rate = shorter interval = faster arrivals).
+	# Marketing staff + Marketing Tower + daily events scale the arrival
+	# interval (more rate = shorter interval = faster arrivals).
 	var rate: float = Staff.marketing_arrival_multiplier() \
-		* Facilities.parking_arrival_multiplier() \
+		* Facilities.marketing_arrival_multiplier() \
 		* DailyEvents.arrival_multiplier_today
 	var interval: float = base_interval / maxf(rate, 0.1)
 	_arrival_timer += delta
