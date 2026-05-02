@@ -10,9 +10,12 @@ extends Node
 
 const DAY_LENGTH_SECONDS: float = 90.0
 # Ticket price is no longer manually controlled — it auto-scales with
-# the player's track level so revenue keeps pace with the cost curve.
+# the venue tier (= min of track_tier and kart_tier). The price only
+# bumps when the player has actually upgraded BOTH systems past the
+# next tier threshold, so they can't abuse one cheap upgrade to spike
+# revenue.
 const TICKET_BASE_PRICE: int = 15
-const TICKET_GROWTH: float = 1.07
+const TICKET_TIER_MULTIPLIER: float = 2.5  # ×2.5 ticket per venue tier
 const TICKET_DEFAULT: int = TICKET_BASE_PRICE
 
 var day: int = 1
@@ -28,19 +31,29 @@ func _ready() -> void:
 	# Start the clock automatically; main.gd can pause/resume if needed.
 	_running = true
 	EventBus.day_progress_changed.emit(day_progress())
-	# Re-price the ticket whenever the track levels up.
-	EventBus.track_level_changed.connect(_on_track_level_changed)
+	# Re-price the ticket whenever EITHER the track OR kart fleet
+	# crosses a tier boundary — the price is the min of the two so
+	# both have to advance.
+	EventBus.track_tier_changed.connect(_recompute_ticket_price.unbind(2))
+	EventBus.kart_tier_changed.connect(_recompute_ticket_price.unbind(1))
 
 
-func _on_track_level_changed(level: int, _tier: int) -> void:
-	var new_price: int = compute_ticket_price(level)
+func _recompute_ticket_price() -> void:
+	var new_price: int = compute_ticket_price()
 	if new_price != ticket_price:
 		ticket_price = new_price
 		EventBus.ticket_price_changed.emit(ticket_price)
 
 
-static func compute_ticket_price(track_level: int) -> int:
-	return int(round(float(TICKET_BASE_PRICE) * pow(TICKET_GROWTH, float(maxi(track_level, 1) - 1))))
+static func compute_ticket_price() -> int:
+	# Ticket scales with the WEAKEST of the two big systems (track vs
+	# kart fleet). Player has to upgrade BOTH to actually unlock a
+	# higher price.
+	var venue_tier: int = 1
+	if SaveManager.track != null:
+		var t: Object = SaveManager.track
+		venue_tier = mini(int(t.track_tier()), int(t.kart_tier()))
+	return int(round(float(TICKET_BASE_PRICE) * pow(TICKET_TIER_MULTIPLIER, float(venue_tier - 1))))
 
 
 func _process(delta: float) -> void:

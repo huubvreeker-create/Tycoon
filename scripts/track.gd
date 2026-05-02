@@ -117,15 +117,17 @@ const TIER_ASPHALT_COLOR := {
 # 10 tiers; reaching it costs ~10^22 to fully clear.
 const MAX_LEVEL: int = 450
 
-# Cost growth tuned so the cumulative cost to reach MAX_LEVEL is in
-# the 10-sextillion range (5,000 starting cash → 10^22 endgame).
-const TRACK_UPGRADE_BASE_COST: float = 50.0
+# Cost growth — base costs are higher than before so the early game
+# isn't a sprint. Player needs to actually grind a few customer cycles
+# before each upgrade. End-game cumulative still reaches the
+# multi-quintillion range thanks to compounding 1.10 growth per level.
+const TRACK_UPGRADE_BASE_COST: float = 250.0
 const TRACK_UPGRADE_GROWTH: float = 1.10
-const KART_UPGRADE_BASE_COST: float = 30.0
+const KART_UPGRADE_BASE_COST: float = 100.0
 const KART_UPGRADE_GROWTH: float = 1.10
-const BUY_KART_BASE_COST: float = 250.0
-const BUY_KART_LEVEL_FACTOR: float = 25.0
-const BUY_KART_FLEET_GROWTH: float = 1.18
+const BUY_KART_BASE_COST: float = 800.0
+const BUY_KART_LEVEL_FACTOR: float = 50.0
+const BUY_KART_FLEET_GROWTH: float = 1.22
 
 const PATH_SEGMENTS: int = 96
 const ASPHALT_DEPTH: float = 0.12
@@ -381,15 +383,17 @@ func _rebuild_for_new_tier() -> void:
 
 
 func _build_ground() -> void:
-	# A subtle dark plane under the track to anchor the scene visually.
+	# Big green grass plane covering the whole venue + surrounding
+	# space. Scales generously so we don't have to re-build it for
+	# every tier.
 	ground = MeshInstance3D.new()
 	ground.name = "Ground"
 	var plane := PlaneMesh.new()
-	var size: float = TIER_TRACK_RX[track_tier()] * 2.4
-	plane.size = Vector2(size, size * 0.7)
+	var size: float = 240.0
+	plane.size = Vector2(size, size)
 	ground.mesh = plane
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.08, 0.09, 0.13)
+	mat.albedo_color = Color(0.16, 0.30, 0.14)  # grass green
 	mat.metallic = 0.0
 	mat.roughness = 1.0
 	ground.material_override = mat

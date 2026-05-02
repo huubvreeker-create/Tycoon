@@ -8,15 +8,15 @@ const MAX_LEVEL: int = 100
 const COST_GROWTH: float = 1.10
 
 const _BUILD_COST := {
-	"cafeteria":     500.0,
-	"pit_lane":      800.0,
-	"lounge":       1000.0,
-	"merch_shop":    600.0,
-	"sponsor_boards":400.0,
-	"lighting":      700.0,
-	"grandstand":    600.0,
-	"parking":       450.0,
-	"marketing":     700.0,
+	"cafeteria":    1500.0,
+	"pit_lane":     2400.0,
+	"lounge":       3500.0,
+	"merch_shop":   1800.0,
+	"sponsor_boards":1200.0,
+	"lighting":     2200.0,
+	"grandstand":   1800.0,
+	"parking":      1300.0,
+	"marketing":    2000.0,
 }
 
 # Track-tier required to BUILD or UPGRADE each facility. Locked facilities

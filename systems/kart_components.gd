@@ -9,11 +9,11 @@ const MAX_LEVEL: int = 100
 const COST_GROWTH: float = 1.10
 
 const _BASE_COST := {
-	"engine":  120.0,
-	"tires":   90.0,
-	"chassis": 100.0,
-	"suit":     70.0,
-	"brakes":   80.0,
+	"engine":  350.0,
+	"tires":   260.0,
+	"chassis": 300.0,
+	"suit":    200.0,
+	"brakes":  240.0,
 }
 
 const _NAMES := {

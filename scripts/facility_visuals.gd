@@ -30,6 +30,7 @@ const _SPONSOR_COLORS := [
 
 var _track: Track
 var _root_holders := {}  # facility name → Node3D holder
+var _decoration_holder: Node3D
 
 
 func _ready() -> void:
@@ -39,6 +40,12 @@ func _ready() -> void:
 		holder.name = facility.capitalize() + "Holder"
 		add_child(holder)
 		_root_holders[facility] = holder
+	# Permanent venue decorations (ticket booth + walkway network +
+	# trees). Don't depend on facility levels but DO depend on the
+	# track tier (positions scale with the track footprint).
+	_decoration_holder = Node3D.new()
+	_decoration_holder.name = "DecorationHolder"
+	add_child(_decoration_holder)
 	EventBus.facility_upgraded.connect(_on_facility_upgraded)
 	# Track size only changes on tier rollover (per-level upgrades buy
 	# stats, not new geometry), so we only need to rebuild facility
@@ -51,6 +58,17 @@ func _ready() -> void:
 func _rebuild_all() -> void:
 	for facility: String in Facilities.facility_names():
 		_rebuild_one(facility)
+	_rebuild_decorations()
+
+
+func _rebuild_decorations() -> void:
+	for child in _decoration_holder.get_children():
+		child.queue_free()
+	if _track == null:
+		return
+	_build_walkways(_decoration_holder)
+	_build_ticket_booth(_decoration_holder)
+	_build_trees(_decoration_holder)
 
 
 func _on_facility_upgraded(facility: String, _level: int) -> void:
@@ -809,3 +827,167 @@ func _build_marketing(parent: Node3D, level: int) -> void:
 	_add_facility_click_area(parent, "marketing",
 		pos + Vector3(0, (pole_h + bh) * 0.5, 0),
 		Vector3(maxf(bw, 1.0) + 0.6, pole_h + bh + 0.6, maxf(bw, 1.0) + 0.6))
+
+
+# ---------------------------------------------------------------------------
+# Permanent decoration: ticket booth, walkways, trees
+# ---------------------------------------------------------------------------
+const _WALKWAY_COLOR := Color(0.55, 0.54, 0.50)        # concrete grey
+const _ROAD_COLOR    := Color(0.13, 0.14, 0.18)        # asphalt road
+const _TICKET_COLOR  := Color(0.95, 0.85, 0.30)        # bright yellow
+const _TREE_TRUNK    := Color(0.32, 0.22, 0.12)
+const _TREE_FOLIAGE  := Color(0.18, 0.45, 0.18)
+
+
+# Hub position — the venue's "ticket booth" sits here, and every
+# walkway radiates from it. Placed south of the track, close enough
+# to be a natural funnel point but well clear of the asphalt.
+func _hub_position() -> Vector3:
+	return Vector3(-_track.current_rx() * 0.4, 0.0, -_track_outer_z(7.0))
+
+
+func _build_ticket_booth(parent: Node3D) -> void:
+	var pos := _hub_position()
+	var w: float = 3.4
+	var h: float = 3.0
+	var d: float = 2.6
+	# Booth body
+	_make_box(parent, Vector3(w, h, d),
+		pos + Vector3(0, h * 0.5, 0),
+		Color(0.92, 0.92, 0.95))
+	# Roof overhang
+	_make_box(parent, Vector3(w * 1.25, 0.18, d * 1.25),
+		pos + Vector3(0, h + 0.10, 0),
+		_TICKET_COLOR.darkened(0.3))
+	# Lit "TICKETS" sign band on the front (track-facing side, +Z).
+	_make_label_strip(parent, _TICKET_COLOR,
+		pos + Vector3(0, h * 0.7, d * 0.5 + 0.05),
+		Vector3(w * 0.85, 0.45, 0.06))
+	# Service window — dark slot below the sign.
+	_make_box(parent, Vector3(w * 0.5, 0.6, 0.06),
+		pos + Vector3(0, h * 0.42, d * 0.5 + 0.04),
+		Color(0.10, 0.10, 0.13))
+	# Two simple turnstiles in front of the booth on the +Z side.
+	for sx: float in [-0.7, 0.7]:
+		_make_box(parent, Vector3(0.18, 1.1, 0.18),
+			pos + Vector3(sx, 0.55, d * 0.5 + 0.6),
+			Color(0.4, 0.4, 0.45))
+
+
+func _build_walkways(parent: Node3D) -> void:
+	# Spectator walkway network: a "spine" running along the south
+	# (-Z) side of the venue, with branches reaching out to each
+	# spectator-facing facility + parking. Pit lane and marketing
+	# tower are NOT spectator areas, so no walkway to them.
+	var hub: Vector3 = _hub_position()
+
+	# Main road from parking to ticket booth (wider, asphalt-coloured).
+	var rx: float = _track.current_rx()
+	var rz: float = _track.current_rz()
+	var parking_corner := Vector3(
+		-_track_outer_x(5.0) - 8.0,        # roughly the inward corner of the lot
+		0.04,
+		-_track_outer_z(4.0) - 4.0)
+	_make_road(parent, hub, parking_corner, 2.4, _ROAD_COLOR)
+
+	# Walkways from hub to each spectator-facing facility position.
+	# We always draw these (even if the facility isn't built yet) so
+	# the venue layout stays consistent and readable.
+	var endpoints: Array[Vector3] = [
+		# Cafeteria entrance (in front of the patio)
+		Vector3(-_track_outer_x(4.0), 0.04, 0.0),
+		# Merch shop entrance
+		Vector3(_track_outer_x(4.0), 0.04, 0.0),
+		# Grandstand front (centre, just south of the track)
+		Vector3(0.0, 0.04, -_track_outer_z(1.5)),
+		# Lounge entrance (far south-centre)
+		Vector3(0.0, 0.04, -_track_outer_z(9.0)),
+	]
+	for end_pos: Vector3 in endpoints:
+		_make_road(parent, hub, end_pos, 1.4, _WALKWAY_COLOR)
+	# Suppress unused-warning placeholder
+	if rx > 0.0 and rz > 0.0:
+		pass
+
+
+func _make_road(parent: Node3D, a: Vector3, b: Vector3, width: float, color: Color) -> void:
+	# Single rectangular slab between two points (in the XZ plane).
+	var direction := Vector3(b.x - a.x, 0, b.z - a.z)
+	var length: float = direction.length()
+	if length < 0.05:
+		return
+	var center := (a + b) * 0.5
+	var slab := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(length, 0.06, width)
+	slab.mesh = bm
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.roughness = 0.85
+	slab.material_override = mat
+	slab.position = Vector3(center.x, 0.04, center.z)
+	# Long axis (local +X) aligned with direction
+	slab.rotation.y = atan2(-direction.z, direction.x)
+	parent.add_child(slab)
+
+
+func _build_trees(parent: Node3D) -> void:
+	# Decorative trees scattered just outside the venue's main rectangle
+	# so the camera always shows something green rather than a void.
+	var rx: float = _track.current_rx()
+	var rz: float = _track.current_rz()
+	# Place the trees on an ellipse well outside the rumble strip + all
+	# facility footprints, with a stable seeded RNG so they don't
+	# jitter around each rebuild.
+	var ring_x: float = _track_outer_x(18.0)
+	var ring_z: float = _track_outer_z(14.0)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 19370 + int(_track.track_tier())
+	var tree_count: int = 24
+	for i in range(tree_count):
+		var t: float = (float(i) + rng.randf_range(-0.1, 0.1)) / float(tree_count) * TAU
+		var jitter_r: float = rng.randf_range(0.0, 6.0)
+		var x: float = cos(t) * (ring_x + jitter_r)
+		var z: float = sin(t) * (ring_z + jitter_r)
+		var height: float = rng.randf_range(3.5, 5.5)
+		_make_tree(parent, Vector3(x, 0.0, z), height, rng)
+	# Suppress unused
+	if rx > 0.0 and rz > 0.0:
+		pass
+
+
+func _make_tree(parent: Node3D, base_pos: Vector3, height: float, rng: RandomNumberGenerator) -> void:
+	# Trunk: short cylinder
+	var trunk := MeshInstance3D.new()
+	trunk.name = "Trunk"
+	var trunk_mesh := CylinderMesh.new()
+	trunk_mesh.top_radius = 0.18
+	trunk_mesh.bottom_radius = 0.22
+	trunk_mesh.height = height * 0.40
+	trunk.mesh = trunk_mesh
+	var trunk_mat := StandardMaterial3D.new()
+	trunk_mat.albedo_color = _TREE_TRUNK
+	trunk_mat.roughness = 0.95
+	trunk.material_override = trunk_mat
+	trunk.position = base_pos + Vector3(0, height * 0.20, 0)
+	parent.add_child(trunk)
+	# Foliage: cone (cylinder with zero top radius).
+	var foliage := MeshInstance3D.new()
+	foliage.name = "Foliage"
+	var foliage_mesh := CylinderMesh.new()
+	foliage_mesh.top_radius = 0.05
+	foliage_mesh.bottom_radius = height * 0.32
+	foliage_mesh.height = height * 0.70
+	foliage.mesh = foliage_mesh
+	var foliage_mat := StandardMaterial3D.new()
+	# Slightly randomise foliage shade so the grove isn't uniform.
+	var shade: float = rng.randf_range(-0.06, 0.06)
+	foliage_mat.albedo_color = Color(
+		clampf(_TREE_FOLIAGE.r + shade, 0.0, 1.0),
+		clampf(_TREE_FOLIAGE.g + shade, 0.0, 1.0),
+		clampf(_TREE_FOLIAGE.b + shade, 0.0, 1.0),
+	)
+	foliage_mat.roughness = 0.95
+	foliage.material_override = foliage_mat
+	foliage.position = base_pos + Vector3(0, height * 0.40 + height * 0.35, 0)
+	parent.add_child(foliage)

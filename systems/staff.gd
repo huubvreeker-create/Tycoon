@@ -9,11 +9,11 @@ const MAX_PER_ROLE: int = 8
 const HIRE_COST_GROWTH: float = 1.35
 
 const _BASE_HIRE_COST := {
-	"mechanic":     400,
-	"receptionist": 300,
-	"marketing":    600,
-	"instructor":   500,
-	"janitor":      200,
+	"mechanic":    1200,
+	"receptionist": 900,
+	"marketing":   1800,
+	"instructor":  1500,
+	"janitor":      600,
 }
 
 const _DAILY_SALARY := {

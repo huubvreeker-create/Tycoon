@@ -10,11 +10,11 @@
 [ext_resource type="PackedScene" path="res://ui/welcome_popup.tscn" id="8_welcome"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
-sky_top_color = Color(0.10, 0.12, 0.22, 1)
-sky_horizon_color = Color(0.18, 0.22, 0.32, 1)
+sky_top_color = Color(0.30, 0.45, 0.65, 1)
+sky_horizon_color = Color(0.55, 0.68, 0.78, 1)
 sky_curve = 0.15
-ground_bottom_color = Color(0.04, 0.05, 0.08, 1)
-ground_horizon_color = Color(0.10, 0.13, 0.20, 1)
+ground_bottom_color = Color(0.10, 0.18, 0.10, 1)
+ground_horizon_color = Color(0.18, 0.32, 0.18, 1)
 sun_angle_max = 30.0
 sun_curve = 0.15
 
