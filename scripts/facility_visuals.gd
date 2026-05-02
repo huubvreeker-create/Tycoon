@@ -271,13 +271,14 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 	# Width grows with facility level; the lane covers the +Z arc of
 	# the oval from t_start to t_end (centered at π/2 = top of oval).
 	var pit_lane_width: float = 2.6 + float(level) * 0.06
-	# Maximum outward offset at the apex of the pit curve. Must clear
-	# the rumble strip even at chicane wave-peaks; APEX_GAP grows with
-	# wave_amp so higher tiers get more cushion automatically.
+	# Maximum outward offset at the apex of the pit curve. Real F1
+	# circuits have at least ~5m of grass between the racing line and
+	# the pit wall (Red Bull Ring, Spa, etc.) — anything closer reads
+	# as "the pit is on the track". So bump APEX_GAP substantially.
 	var wave_amp: float = _track.current_wave_amp()
 	var asphalt_outer: float = _track.current_asphalt_width() * 0.5 \
 		+ wave_amp + _RUMBLE_INSET_VAL
-	var apex_gap: float = 1.5 + wave_amp * 0.4
+	var apex_gap: float = 3.5 + wave_amp * 0.5
 	var max_offset: float = asphalt_outer + pit_lane_width * 0.5 + apex_gap
 	# Arc range covers ~130° centred on the +Z apex (90°). 25°..155° is
 	# wide enough that, with our 5% merge ramps, every chicane wave-peak
@@ -464,9 +465,34 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 		door.rotation.y = rot_y
 		parent.add_child(door)
 
+	# Paddock area BEHIND the garages — flat asphalt slab where in real
+	# F1 the team trucks / motorhomes / equipment sit. Built as a
+	# CSGPolygon3D extruded along the same curve, on the outer side.
+	var paddock_w: float = 5.5 + float(level) * 0.08
+	var paddock_inner: float = pit_lane_width * 0.5 + bay_d + 0.5
+	var paddock_csg := CSGPolygon3D.new()
+	paddock_csg.name = "Paddock"
+	paddock_csg.mode = CSGPolygon3D.MODE_PATH
+	paddock_csg.path_node = pit_path.get_path()
+	paddock_csg.path_interval_type = CSGPolygon3D.PATH_INTERVAL_DISTANCE
+	paddock_csg.path_interval = 0.5
+	paddock_csg.path_joined = false
+	paddock_csg.polygon = PackedVector2Array([
+		Vector2(paddock_inner,             0.04),
+		Vector2(paddock_inner + paddock_w, 0.04),
+		Vector2(paddock_inner + paddock_w, -0.03),
+		Vector2(paddock_inner,             -0.03),
+	])
+	var paddock_mat := StandardMaterial3D.new()
+	paddock_mat.albedo_color = Color(0.16, 0.17, 0.20)
+	paddock_mat.roughness = 0.9
+	paddock_csg.material_override = paddock_mat
+	parent.add_child(paddock_csg)
+
 	# Click area: rough bounding box centred on the apex of the pit curve.
 	var apex: Vector3 = pit_centers[pit_centers.size() / 2]
-	var click_size := Vector3(rx * 1.6, bay_h * 1.8, max_offset + bay_d + 4.0)
+	var click_size := Vector3(rx * 1.6, bay_h * 1.8,
+		max_offset + bay_d + paddock_w + 4.0)
 	_add_facility_click_area(parent, "pit_lane",
 		Vector3(0, bay_h * 0.5, apex.z * 0.5),
 		click_size)
@@ -964,39 +990,50 @@ func _build_ticket_booth(parent: Node3D) -> void:
 
 
 func _build_walkways(parent: Node3D) -> void:
-	# Spectator walkway network: a "spine" running along the south
-	# (-Z) side of the venue, with branches reaching out to each
-	# spectator-facing facility + parking. Pit lane and marketing
-	# tower are NOT spectator areas, so no walkway to them.
+	# Real F1 venues have a CONCOURSE PLAZA around the spectator
+	# entrance, not random spaghetti walkways crossing the venue. So:
+	# - One big rectangular concrete plaza at the south of the track
+	#   (the spectator entrance side)
+	# - One main road from the parking lot to that plaza
+	# - One short walkway from the plaza forward to the grandstand
+	# That's it — keeps things clean. The cafeteria / merch / lounge /
+	# pit complex all already sit on grass within walking distance,
+	# we don't need to draw a path to each of them individually
+	# (would just clip through buildings).
 	var hub: Vector3 = _hub_position()
 
-	# Main road from parking to ticket booth (wider, asphalt-coloured).
-	var rx: float = _track.current_rx()
-	var rz: float = _track.current_rz()
+	# Main concourse plaza — wide concrete slab around the ticket booth.
+	var plaza_w: float = 18.0
+	var plaza_d: float = 9.0
+	var plaza := MeshInstance3D.new()
+	plaza.name = "Concourse"
+	var pbm := BoxMesh.new()
+	pbm.size = Vector3(plaza_w, 0.06, plaza_d)
+	plaza.mesh = pbm
+	var pmat := StandardMaterial3D.new()
+	pmat.albedo_color = _WALKWAY_COLOR
+	pmat.roughness = 0.85
+	plaza.material_override = pmat
+	plaza.position = Vector3(hub.x, 0.04, hub.z)
+	parent.add_child(plaza)
+
+	# Painted edge stripe around the plaza (light accent).
+	_make_label_strip(parent, _WALKWAY_COLOR.lightened(0.4),
+		Vector3(hub.x, 0.10, hub.z + plaza_d * 0.5 + 0.05),
+		Vector3(plaza_w * 0.95, 0.06, 0.10))
+
+	# Main asphalt road from parking lot to the plaza.
 	var parking_corner := Vector3(
-		-_track_outer_x(5.0) - 8.0,        # roughly the inward corner of the lot
+		-_track_outer_x(5.0) - 8.0,
 		0.04,
 		-_track_outer_z(4.0) - 4.0)
-	_make_road(parent, hub, parking_corner, 2.4, _ROAD_COLOR)
+	_make_road(parent, hub + Vector3(-plaza_w * 0.3, 0, 0),
+		parking_corner, 3.0, _ROAD_COLOR)
 
-	# Walkways from hub to each spectator-facing facility position.
-	# We always draw these (even if the facility isn't built yet) so
-	# the venue layout stays consistent and readable.
-	var endpoints: Array[Vector3] = [
-		# Cafeteria entrance (in front of the patio)
-		Vector3(-_track_outer_x(4.0), 0.04, 0.0),
-		# Merch shop entrance
-		Vector3(_track_outer_x(4.0), 0.04, 0.0),
-		# Grandstand front (centre, just south of the track)
-		Vector3(0.0, 0.04, -_track_outer_z(1.5)),
-		# Lounge entrance (far south-centre)
-		Vector3(0.0, 0.04, -_track_outer_z(9.0)),
-	]
-	for end_pos: Vector3 in endpoints:
-		_make_road(parent, hub, end_pos, 1.4, _WALKWAY_COLOR)
-	# Suppress unused-warning placeholder
-	if rx > 0.0 and rz > 0.0:
-		pass
+	# Short walkway from plaza forward to the grandstand entrance.
+	var grandstand_entrance := Vector3(0.0, 0.04, -_track_outer_z(1.5))
+	_make_road(parent, hub + Vector3(0, 0, plaza_d * 0.5),
+		grandstand_entrance, 2.4, _WALKWAY_COLOR)
 
 
 func _make_road(parent: Node3D, a: Vector3, b: Vector3, width: float, color: Color) -> void:
