@@ -197,6 +197,39 @@ func tier() -> int:
 	return TIER_LEVEL_CAPS.size()
 
 
+# Fraction (0..1) of progress through the current tier — used to
+# interpolate every dimension toward the next tier so the kart morphs
+# continuously per upgrade instead of snapping at tier boundaries.
+func _tier_progress() -> float:
+	var t: int = tier()
+	if t >= TIER_LEVEL_CAPS.size():
+		return 0.0
+	var prev_cap: int = 0 if t == 1 else TIER_LEVEL_CAPS[t - 2]
+	var current_cap: int = TIER_LEVEL_CAPS[t - 1]
+	var span: int = current_cap - prev_cap
+	if span <= 1:
+		return 0.0
+	return float(level - prev_cap - 1) / float(span - 1)
+
+
+func _lerp_v3_table(table: Dictionary) -> Vector3:
+	var t: int = tier()
+	var base_v: Vector3 = table[t]
+	if t >= TIER_LEVEL_CAPS.size():
+		return base_v
+	var next_v: Vector3 = table[t + 1]
+	return base_v.lerp(next_v, _tier_progress())
+
+
+func _lerp_f_table(table: Dictionary) -> float:
+	var t: int = tier()
+	var base_v: float = float(table[t])
+	if t >= TIER_LEVEL_CAPS.size():
+		return base_v
+	var next_v: float = float(table[t + 1])
+	return lerpf(base_v, next_v, _tier_progress())
+
+
 func current_speed() -> float:
 	var base := RACING_SPEED_BASE if racing else IDLE_SPEED_BASE
 	var component_bonus := KartComponents.engine_speed_bonus()
@@ -215,12 +248,11 @@ func set_racing(active: bool) -> void:
 
 
 func set_level(new_level: int) -> void:
-	var prev_tier: int = tier()
-	level = clampi(new_level, 1, 100)
+	level = clampi(new_level, 1, 450)
 	_apply_visuals()
-	# Wheels need to be re-laid out when their dimensions change at a
-	# tier rollover; rebuild them in place.
-	if prev_tier != tier():
+	# Wheels interpolate every level too, so rebuild in place each
+	# upgrade so radius / spacing nudge alongside the body.
+	if body_material != null:
 		_rebuild_wheels()
 
 
@@ -270,11 +302,10 @@ func _rebuild_wheels() -> void:
 	for w: MeshInstance3D in wheel_meshes:
 		w.queue_free()
 	wheel_meshes.clear()
-	var t: int = tier()
-	var radius: float = _WHEEL_RADIUS[t]
-	var height: float = _WHEEL_HEIGHT[t]
-	var ox: float = _WHEEL_X[t]
-	var oz: float = _WHEEL_Z[t]
+	var radius: float = _lerp_f_table(_WHEEL_RADIUS)
+	var height: float = _lerp_f_table(_WHEEL_HEIGHT)
+	var ox: float = _lerp_f_table(_WHEEL_X)
+	var oz: float = _lerp_f_table(_WHEEL_Z)
 	for offset: Vector3 in [
 		Vector3( ox, radius,  oz),
 		Vector3( ox, radius, -oz),
@@ -315,24 +346,25 @@ func _apply_visuals() -> void:
 	if body_material == null:
 		return
 	var t: int = tier()
+	var p: float = _tier_progress()
 
-	# --- Body ---
-	(body_mesh.mesh as BoxMesh).size = _BODY_SIZE[t]
-	body_mesh.position = Vector3(0, _BODY_Y[t], 0)
+	# --- Body --- continuous lerp between this tier's recipe and next.
+	(body_mesh.mesh as BoxMesh).size = _lerp_v3_table(_BODY_SIZE)
+	body_mesh.position = Vector3(0, _lerp_f_table(_BODY_Y), 0)
 	body_material.albedo_color = kart_color
-	body_material.metallic = 0.20 + (t - 1) * 0.12
-	body_material.roughness = 0.50 - (t - 1) * 0.08
+	body_material.metallic = 0.20 + (float(t) - 1.0 + p) * 0.10
+	body_material.roughness = maxf(0.10, 0.50 - (float(t) - 1.0 + p) * 0.06)
 
 	# --- Cockpit ---
-	(cockpit_mesh.mesh as BoxMesh).size = _COCKPIT_SIZE[t]
-	cockpit_mesh.position = _COCKPIT_OFFSET[t]
+	(cockpit_mesh.mesh as BoxMesh).size = _lerp_v3_table(_COCKPIT_SIZE)
+	cockpit_mesh.position = _lerp_v3_table(_COCKPIT_OFFSET)
 	cockpit_material.albedo_color = kart_color.darkened(0.45)
 
-	# --- Rear spoiler ---
+	# --- Rear spoiler — appears from tier 2 and grows continuously. ---
 	if t >= 2:
 		spoiler_mesh.visible = true
-		(spoiler_mesh.mesh as BoxMesh).size = _SPOILER_SIZE[t]
-		spoiler_mesh.position = _SPOILER_OFFSET[t]
+		(spoiler_mesh.mesh as BoxMesh).size = _lerp_v3_table(_SPOILER_SIZE)
+		spoiler_mesh.position = _lerp_v3_table(_SPOILER_OFFSET)
 		spoiler_material.albedo_color = kart_color.darkened(0.2)
 	else:
 		spoiler_mesh.visible = false
@@ -340,8 +372,8 @@ func _apply_visuals() -> void:
 	# --- Front wing (F1 territory) ---
 	if t >= 3:
 		front_wing_mesh.visible = true
-		(front_wing_mesh.mesh as BoxMesh).size = _FRONT_WING_SIZE[t]
-		front_wing_mesh.position = _FRONT_WING_OFFSET[t]
+		(front_wing_mesh.mesh as BoxMesh).size = _lerp_v3_table(_FRONT_WING_SIZE)
+		front_wing_mesh.position = _lerp_v3_table(_FRONT_WING_OFFSET)
 		front_wing_material.albedo_color = kart_color.darkened(0.15)
 	else:
 		front_wing_mesh.visible = false
@@ -349,13 +381,13 @@ func _apply_visuals() -> void:
 	# --- Halo (F1-style safety device) — appears at tier 8 and stays. ---
 	if t >= 8:
 		halo_mesh.visible = true
-		halo_mesh.position = _COCKPIT_OFFSET[t] + Vector3(0, 0.45, 0)
+		halo_mesh.position = _lerp_v3_table(_COCKPIT_OFFSET) + Vector3(0, 0.45, 0)
 	else:
 		halo_mesh.visible = false
 
 	# --- Beacon (always-on glow) ---
-	(beacon_mesh.mesh as BoxMesh).size = _BEACON_SIZE[t]
-	beacon_mesh.position = Vector3(0, _BEACON_Y[t], 0)
+	(beacon_mesh.mesh as BoxMesh).size = _lerp_v3_table(_BEACON_SIZE)
+	beacon_mesh.position = Vector3(0, _lerp_f_table(_BEACON_Y), 0)
 	beacon_material.albedo_color = kart_color.lightened(0.25)
 	beacon_material.emission = kart_color
 

@@ -236,6 +236,43 @@ func levels_in_current_kart_tier() -> int:
 	return TIER_LEVEL_CAPS[t - 1] - _tier_floor(t)
 
 
+# Linear interpolation between this tier's table value and the next
+# tier's, based on how far the player has progressed within the
+# current tier. Lets continuous per-level upgrades morph the visuals
+# smoothly toward the next tier instead of snapping at tier rollover.
+func _interp_value_for(table: Dictionary) -> float:
+	var t: int = track_tier()
+	var base_val: float = float(table[t])
+	if t >= TIER_COUNT:
+		return base_val
+	var levels: int = levels_in_current_track_tier()
+	if levels <= 1:
+		return base_val
+	var lvl_progress: float = float(track_level_in_tier() - 1) / float(levels - 1)
+	var next_val: float = float(table[t + 1])
+	return lerpf(base_val, next_val, lvl_progress)
+
+func current_rx() -> float:
+	return _interp_value_for(TIER_TRACK_RX)
+
+func current_rz() -> float:
+	return _interp_value_for(TIER_TRACK_RZ)
+
+func current_asphalt_width() -> float:
+	return _interp_value_for(TIER_ASPHALT_WIDTH)
+
+func current_wave_amp() -> float:
+	return _interp_value_for(TIER_WAVE_AMP)
+
+func current_wave_freq() -> int:
+	# Discrete — wave count only changes at tier rollovers so the
+	# chicane shape stays stable across each tier's levels.
+	return TIER_WAVE_FREQ[track_tier()]
+
+func current_race_duration() -> float:
+	return _interp_value_for(TIER_RACE_DURATION)
+
+
 func venue_name() -> String:
 	return TIER_NAMES[track_tier()]
 
@@ -289,6 +326,10 @@ func upgrade_track() -> bool:
 	if new_tier != prev_tier:
 		_rebuild_for_new_tier()
 		EventBus.track_tier_changed.emit(new_tier, venue_name())
+	else:
+		# Same tier — just nudge the geometry so the player sees a
+		# small but visible change for every single upgrade tap.
+		_refresh_track_geometry()
 	EventBus.track_level_changed.emit(track_level, new_tier)
 	EventBus.kart_count_changed.emit(karts.size(), kart_capacity())
 	return true
@@ -375,11 +416,10 @@ func _build_path() -> void:
 	path.name = "RacePath"
 	add_child(path)
 	var curve := Curve3D.new()
-	var t_tier: int = track_tier()
-	var rx: float = TIER_TRACK_RX[t_tier]
-	var rz: float = TIER_TRACK_RZ[t_tier]
-	var freq: int = TIER_WAVE_FREQ[t_tier]
-	var amp: float = TIER_WAVE_AMP[t_tier]
+	var rx: float = current_rx()
+	var rz: float = current_rz()
+	var freq: int = current_wave_freq()
+	var amp: float = current_wave_amp()
 	for i in range(PATH_SEGMENTS):
 		var t := float(i) / float(PATH_SEGMENTS) * TAU
 		var base_x := cos(t) * rx
@@ -397,7 +437,7 @@ func _build_path() -> void:
 
 func _build_asphalt() -> void:
 	var t_tier: int = track_tier()
-	var w: float = TIER_ASPHALT_WIDTH[t_tier]
+	var w: float = current_asphalt_width()
 	var rumble_w: float = w + RUMBLE_INSET * 2.0
 
 	# Outer rumble strip (slightly wider, sits underneath the asphalt).
@@ -464,6 +504,54 @@ func _build_click_area() -> void:
 	click_collider.shape = shape
 	click_collider.position = Vector3(0, 0.05, 0)
 	click_area.add_child(click_collider)
+
+
+func _refresh_track_geometry() -> void:
+	# Lightweight in-place rebuild of the path curve + CSG polygon
+	# widths so each per-level upgrade visibly grows the track without
+	# tearing down all the nodes (and re-parenting the karts).
+	if path == null or asphalt_csg == null or rumble_csg == null:
+		return
+	var rx: float = current_rx()
+	var rz: float = current_rz()
+	var freq: int = current_wave_freq()
+	var amp: float = current_wave_amp()
+	var curve := Curve3D.new()
+	for i in range(PATH_SEGMENTS):
+		var t: float = float(i) / float(PATH_SEGMENTS) * TAU
+		var base_x: float = cos(t) * rx
+		var base_z: float = sin(t) * rz
+		var n: Vector2 = Vector2(cos(t) / rx, sin(t) / rz).normalized()
+		var wobble: float = 0.0
+		if freq > 0:
+			wobble = sin(t * float(freq)) * amp
+		curve.add_point(Vector3(base_x + n.x * wobble, 0.0, base_z + n.y * wobble))
+	curve.add_point(curve.get_point_position(0))
+	path.curve = curve
+	# Asphalt + rumble polygon widths.
+	var w: float = current_asphalt_width()
+	asphalt_csg.polygon = PackedVector2Array([
+		Vector2(-w * 0.5, 0.04),
+		Vector2( w * 0.5, 0.04),
+		Vector2( w * 0.5, -ASPHALT_DEPTH * 0.5),
+		Vector2(-w * 0.5, -ASPHALT_DEPTH * 0.5),
+	])
+	var rumble_w: float = w + RUMBLE_INSET * 2.0
+	rumble_csg.polygon = PackedVector2Array([
+		Vector2(-rumble_w * 0.5, 0.0),
+		Vector2( rumble_w * 0.5, 0.0),
+		Vector2( rumble_w * 0.5, -ASPHALT_DEPTH * 0.6),
+		Vector2(-rumble_w * 0.5, -ASPHALT_DEPTH * 0.6),
+	])
+	# Click area + ground footprint follow the new RX.
+	if click_collider and click_collider.shape is BoxShape3D:
+		(click_collider.shape as BoxShape3D).size = Vector3(rx * 2.3, 0.4, rz * 2.3)
+	if ground and ground.mesh is PlaneMesh:
+		(ground.mesh as PlaneMesh).size = Vector2(rx * 2.4, rx * 2.4 * 0.7)
+	# Start/finish needs to reposition with the new curve.
+	if start_finish_root:
+		start_finish_root.queue_free()
+	_build_start_finish()
 
 
 func _build_start_finish() -> void:
@@ -643,7 +731,7 @@ func _find_free_kart() -> Kart:
 
 func _start_race(c: Customer, kart: Kart) -> void:
 	c.assigned_kart = kart
-	var base_duration: float = TIER_RACE_DURATION[track_tier()]
+	var base_duration: float = current_race_duration()
 	c.race_time_left = maxf(3.0, base_duration - Facilities.pit_lane_race_time_reduction())
 	kart.set_racing(true)
 	racing.append(c)

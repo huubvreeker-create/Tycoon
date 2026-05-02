@@ -39,6 +39,9 @@ func _ready() -> void:
 		_root_holders[facility] = holder
 	EventBus.facility_upgraded.connect(_on_facility_upgraded)
 	EventBus.track_tier_changed.connect(_on_tier_changed.unbind(2))
+	# Also rebuild on per-level track upgrades so facilities track the
+	# track's continuous growth (RX/RZ now interpolate every level).
+	EventBus.track_level_changed.connect(_on_tier_changed.unbind(2))
 	# Defer first build so the track has constructed its path/footprint.
 	call_deferred("_rebuild_all")
 
@@ -251,7 +254,10 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 		Vector3(pit_lane_length * 0.96, 0.10, 0.20))
 
 	# Garage row on the OUTSIDE of the pit lane (further from the track).
-	var bays: int = clampi(level, 1, 8)
+	# 1 box per ~2 cars: scales 1 → 11 across pit_lane level 1 → 100,
+	# matching tier-10's 22-car grid (2 cars per box).
+	var bays: int = clampi(1 + roundi((float(level) - 1.0) * 10.0
+		/ float(maxi(Facilities.MAX_LEVEL - 1, 1))), 1, 11)
 	var bay_w: float = 2.6
 	var bay_d: float = 3.4 + level * 0.05
 	var bay_h: float = 2.6 + level * 0.05

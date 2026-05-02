@@ -21,9 +21,9 @@ const _BUILD_COST := {
 # show "Requires Tier X" in the panel until the player upgrades the
 # track high enough.
 const _REQUIRED_TRACK_TIER := {
-	"cafeteria":      1,
+	"pit_lane":       1,
+	"cafeteria":      2,
 	"merch_shop":     2,
-	"pit_lane":       2,
 	"sponsor_boards": 3,
 	"grandstand":     3,
 	"lounge":         4,
