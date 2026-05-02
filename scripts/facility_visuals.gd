@@ -79,6 +79,8 @@ func _rebuild_decorations() -> void:
 		child.queue_free()
 	if _track == null:
 		return
+	_build_world_borders(_decoration_holder)
+	_build_approach_road(_decoration_holder)
 	_build_walkways(_decoration_holder)
 	_build_ticket_booth(_decoration_holder)
 	_build_trees(_decoration_holder)
@@ -104,6 +106,10 @@ func _on_queue_changed() -> void:
 
 func _on_facility_upgraded(facility: String, _level: int) -> void:
 	_rebuild_one(facility)
+	# The approach road's endpoint sits against the parking lot, so
+	# rebuild the static decorations whenever parking is upgraded.
+	if facility == "parking":
+		_rebuild_decorations()
 
 
 func _on_tier_changed() -> void:
@@ -1563,3 +1569,139 @@ func _build_decorative_props(parent: Node3D) -> void:
 		_make_box(parent, Vector3(0.40, 0.30, 0.04),
 			Vector3(fx, fy, plaza_z - plaza_d * 0.5 - 0.4),
 			c)
+
+
+# ---------------------------------------------------------------------------
+# World borders + approach road
+# ---------------------------------------------------------------------------
+# The venue sits in a fixed-size playable rectangle bounded by low
+# concrete perimeter walls. A gap on the south side lets the
+# approach road run from outside the world INTO the venue, ending at
+# the parking lot's south edge. Camera pan_bounds are tuned to match.
+const _WORLD_WEST: float  = -160.0
+const _WORLD_EAST: float  =  130.0
+const _WORLD_NORTH: float =   55.0
+const _WORLD_SOUTH: float = -160.0
+const _WORLD_GATE_X: float = -90.0   # x of the south-edge gate's centre
+const _WORLD_GATE_W: float =  10.0
+
+
+func _build_world_borders(parent: Node3D) -> void:
+	var wall_h: float = 1.0
+	var wall_color := Color(0.55, 0.56, 0.58)
+	var post_color := Color(0.30, 0.30, 0.34)
+	var z_span: float = _WORLD_NORTH - _WORLD_SOUTH
+	var x_span: float = _WORLD_EAST - _WORLD_WEST
+	var center_z: float = (_WORLD_NORTH + _WORLD_SOUTH) * 0.5
+
+	# West wall — full height of the playable rectangle.
+	_make_box(parent, Vector3(0.40, wall_h, z_span),
+		Vector3(_WORLD_WEST, wall_h * 0.5, center_z),
+		wall_color)
+	# East wall.
+	_make_box(parent, Vector3(0.40, wall_h, z_span),
+		Vector3(_WORLD_EAST, wall_h * 0.5, center_z),
+		wall_color)
+	# North wall.
+	_make_box(parent, Vector3(x_span, wall_h, 0.40),
+		Vector3((_WORLD_WEST + _WORLD_EAST) * 0.5, wall_h * 0.5, _WORLD_NORTH),
+		wall_color)
+
+	# South wall — split into two segments around the gate.
+	var west_seg_w: float = (_WORLD_GATE_X - _WORLD_GATE_W * 0.5) - _WORLD_WEST
+	var east_seg_w: float = _WORLD_EAST - (_WORLD_GATE_X + _WORLD_GATE_W * 0.5)
+	if west_seg_w > 0.1:
+		_make_box(parent, Vector3(west_seg_w, wall_h, 0.40),
+			Vector3(_WORLD_WEST + west_seg_w * 0.5, wall_h * 0.5, _WORLD_SOUTH),
+			wall_color)
+	if east_seg_w > 0.1:
+		_make_box(parent, Vector3(east_seg_w, wall_h, 0.40),
+			Vector3(_WORLD_EAST - east_seg_w * 0.5, wall_h * 0.5, _WORLD_SOUTH),
+			wall_color)
+	# Gate posts on either side of the gap — taller, dark, so the
+	# entrance reads from a distance.
+	_make_box(parent, Vector3(0.60, wall_h * 1.5, 0.60),
+		Vector3(_WORLD_GATE_X - _WORLD_GATE_W * 0.5, wall_h * 0.75, _WORLD_SOUTH),
+		post_color)
+	_make_box(parent, Vector3(0.60, wall_h * 1.5, 0.60),
+		Vector3(_WORLD_GATE_X + _WORLD_GATE_W * 0.5, wall_h * 0.75, _WORLD_SOUTH),
+		post_color)
+
+
+func _build_approach_road(parent: Node3D) -> void:
+	# Wide road from the south-edge gate northward into the parking
+	# lot. The road ENTERS through the world wall (extends past the
+	# gate by a few metres so it visibly leaves the playable area)
+	# and ENDS at the parking lot's south edge.
+	var road_w: float = 6.0
+	# Outside the south wall — extends beyond the world boundary so
+	# the road clearly continues "off-map".
+	var off_map: Vector3 = Vector3(_WORLD_GATE_X, 0.04, _WORLD_SOUTH - 6.0)
+	# Through the gate, into the world.
+	var inside_gate: Vector3 = Vector3(_WORLD_GATE_X, 0.04, _WORLD_SOUTH + 0.6)
+	# Parking south edge — south of the lot, in line with the gate.
+	# We approximate a fixed point that always sits south of the lot
+	# regardless of parking level (lot grows toward the +X side, not
+	# south, so its south edge is ~constant relative to track tier).
+	var parking_lot_d: float = _parking_lot_depth()
+	var parking_south_z: float = -_track_outer_z(4.0) - parking_lot_d - 1.0
+	var elbow: Vector3 = Vector3(_WORLD_GATE_X, 0.04, parking_south_z)
+	# Final entry point lines up with the parking lot's south-east
+	# corner so cars "drive in" from the road into the lot.
+	var lot_w: float = _parking_lot_width()
+	var parking_entry_x: float = -_track_outer_x(5.0) - lot_w * 0.5 - 1.5
+	var parking_entry: Vector3 = Vector3(parking_entry_x, 0.04, parking_south_z)
+
+	# Three road segments: gate → off-map (out), gate → elbow (down
+	# into the venue), elbow → parking entry (east into the lot).
+	_make_road(parent, off_map, inside_gate, road_w, _ROAD_COLOR)
+	_make_road(parent, inside_gate, elbow, road_w, _ROAD_COLOR)
+	_make_road(parent, elbow, parking_entry, road_w, _ROAD_COLOR)
+
+	# Yellow centre-line dashes along each segment (skip the first
+	# off-map → gate piece since it's mostly outside the camera).
+	_paint_road_dashes(parent, inside_gate, elbow, 0.5)
+	_paint_road_dashes(parent, elbow, parking_entry, 0.5)
+
+
+func _paint_road_dashes(parent: Node3D, a: Vector3, b: Vector3, width: float) -> void:
+	var dir := Vector3(b.x - a.x, 0, b.z - a.z)
+	var length: float = dir.length()
+	if length < 0.5:
+		return
+	var dash_count: int = maxi(1, int(length / 2.5))
+	var rot_y: float = atan2(-dir.z, dir.x)
+	for i in range(dash_count):
+		var u: float = (float(i) + 0.5) / float(dash_count)
+		var p := a.lerp(b, u)
+		var dash := MeshInstance3D.new()
+		var dbm := BoxMesh.new()
+		dbm.size = Vector3(0.9, 0.06, width)
+		dash.mesh = dbm
+		var dmat := StandardMaterial3D.new()
+		dmat.albedo_color = Color(0.95, 0.85, 0.20)
+		dmat.emission_enabled = true
+		dmat.emission = Color(0.95, 0.85, 0.20)
+		dmat.emission_energy_multiplier = 0.6
+		dash.material_override = dmat
+		dash.position = Vector3(p.x, 0.10, p.z)
+		dash.rotation.y = rot_y
+		parent.add_child(dash)
+
+
+# Parking lot dimension helpers — recompute the formulae used inside
+# _build_parking() so the approach road can line up with the lot's
+# south-east corner regardless of parking level.
+func _parking_lot_width() -> float:
+	var lvl: int = Facilities.parking_level
+	if lvl <= 0:
+		return 0.0
+	var cols: int = clampi(5 + lvl / 4, 5, 22)
+	return float(cols) * 1.6
+
+func _parking_lot_depth() -> float:
+	var lvl: int = Facilities.parking_level
+	if lvl <= 0:
+		return 0.0
+	var rows: int = clampi(2 + lvl / 6, 2, 12)
+	return float(rows) * 2.8

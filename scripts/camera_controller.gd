@@ -30,10 +30,15 @@ signal tapped(screen_pos: Vector2)
 # Yaw the rig so the track's longer X axis runs down the portrait
 # viewport — uses the screen height for the wider track dimension.
 @export var yaw_degrees: float = 90.0
-# Pan bounds also scale with tier 10's reach so the player can pan
-# to the south-loop apex (~88 m from origin) and the parking lot
-# (~30 m further south + west).
-@export var pan_bounds: float = 130.0
+# Pan bounds — match the world-border rectangle in facility_visuals.gd
+# (-160..+130 east-west, -160..+55 north-south). Symmetric pan_bounds
+# is a fallback for callers / tools that read it; the per-axis limits
+# are what _pan_with_relative actually clamps to.
+@export var pan_bounds: float = 160.0
+@export var pan_min_x: float = -160.0
+@export var pan_max_x: float =  130.0
+@export var pan_min_z: float = -160.0
+@export var pan_max_z: float =   55.0
 @export var tap_threshold_px: float = 14.0
 
 @onready var pitch_node: Node3D = $Pitch
@@ -121,8 +126,8 @@ func _pan_with_relative(relative: Vector2) -> void:
 	var local := Vector3(-relative.x, 0, -relative.y) * px_to_world
 	var world_offset := global_transform.basis * local
 	var new_pos := position + Vector3(world_offset.x, 0, world_offset.z)
-	new_pos.x = clampf(new_pos.x, -pan_bounds, pan_bounds)
-	new_pos.z = clampf(new_pos.z, -pan_bounds, pan_bounds)
+	new_pos.x = clampf(new_pos.x, pan_min_x, pan_max_x)
+	new_pos.z = clampf(new_pos.z, pan_min_z, pan_max_z)
 	position = new_pos
 
 
