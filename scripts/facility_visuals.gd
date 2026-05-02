@@ -275,152 +275,196 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 	# and orientation on every tier — only the building scale and
 	# garage count change with the facility level.
 	#
-	# World layout (looking down +Y):
-	#   Track straight: x ∈ [-loop_rx, +loop_rx], z = STRAIGHT_Z
-	#   Pit straight:   x ∈ [-STRAIGHT_HALF, +STRAIGHT_HALF],
-	#                   z = STRAIGHT_Z + grass_gap + pit_w/2
-	#   Garages + paddock further north of the pit straight
+	# The pit-lane SURFACE is built as one continuous CSGPolygon3D
+	# extruded along a custom curved Path3D that:
 	#
-	# The pit ENTRY and EXIT ramps run from the pit-lane corners
-	# diagonally INTO the track at the loop's east/west extremes,
-	# overlapping the track asphalt so the merge looks continuous
-	# (just like real F1 yellow-paint blend zones).
+	#   - Starts on the racing line at the loop's east extreme
+	#     (+loop_rx, STRAIGHT_Z), heading west.
+	#   - Smoothly diverges NORTH over a "merge in" zone.
+	#   - Runs straight and parallel to the main straight in the
+	#     middle (the parallel section, where the wall + garages live).
+	#   - Smoothly converges back over a "merge out" zone.
+	#   - Ends on the racing line at the loop's west extreme
+	#     (-loop_rx, STRAIGHT_Z).
+	#
+	# Because the pit centreline COINCIDES with the track centreline at
+	# both endpoints and bends away over a smooth curve, the pit asphalt
+	# visually FLOWS off the racing line and rejoins it later — no
+	# separate diagonal slabs needed, no awkward overlap, exactly like
+	# real F1 venues.
 	var sh: float = _track.STRAIGHT_HALF
 	var straight_z: float = _track.STRAIGHT_Z
 	var loop_rx: float = _track.current_rx()
 	var asphalt_half: float = _track.current_asphalt_width() * 0.5
-	var asphalt_outer_z: float = straight_z + asphalt_half + _RUMBLE_INSET_VAL
 	var asphalt_color := Color(0.42, 0.44, 0.48)
 	var pit_lane_width: float = 2.8 + float(level) * 0.06
-	# Constant grass gap, same on every tier (the straight stays put).
+	# Constant grass gap between pit and track in the parallel section.
 	var grass_gap: float = 3.5
-	var pit_z: float = asphalt_outer_z + grass_gap + pit_lane_width * 0.5
+	# In the parallel middle section the pit centreline sits at this
+	# z offset NORTH of the track centreline. At the merge endpoints
+	# the offset is 0 (centrelines coincide).
+	var parallel_z_offset: float = asphalt_half + _RUMBLE_INSET_VAL \
+		+ grass_gap + pit_lane_width * 0.5
 
-	# Pit asphalt main slab — covers the full length of the pit
-	# straight (-sh..+sh) at z = pit_z.
-	var pit_main := MeshInstance3D.new()
-	pit_main.name = "PitAsphaltMain"
-	var pit_main_bm := BoxMesh.new()
-	pit_main_bm.size = Vector3(2.0 * sh, 0.08, pit_lane_width)
-	pit_main.mesh = pit_main_bm
+	# Build the curved Path3D in three phases so the parallel section
+	# (where wall + garages live) stays the SAME LENGTH across every
+	# tier (= 2*sh, equal to the central straight). Only the merge-in
+	# and merge-out zones grow with track size — they fan from the
+	# pit straight out to the loop's east/west extreme.
+	var pit_path := Path3D.new()
+	pit_path.name = "PitPath"
+	parent.add_child(pit_path)
+	var pit_curve := Curve3D.new()
+	var pit_centers: Array[Vector3] = []
+	var pit_blends: Array[float] = []
+	# Number of samples per phase. 32 is enough for a smooth merge
+	# curve at any tier.
+	const MERGE_SAMPLES: int = 32
+	const PARALLEL_SAMPLES: int = 48
+	# Phase 1 — merge IN (east end). x: loop_rx → sh, z: STRAIGHT_Z →
+	# parallel_pit_z (smoothstep so the curve eases cleanly).
+	for i in range(MERGE_SAMPLES):
+		var u: float = float(i) / float(MERGE_SAMPLES)
+		var x: float = lerpf(loop_rx, sh, u)
+		var ease: float = smoothstep(0.0, 1.0, u)
+		var z: float = straight_z + parallel_z_offset * ease
+		pit_curve.add_point(Vector3(x, 0.0, z))
+		pit_centers.append(Vector3(x, 0.0, z))
+		pit_blends.append(ease)
+	# Phase 2 — parallel section. x: sh → -sh, z: constant.
+	for i in range(PARALLEL_SAMPLES + 1):
+		var u: float = float(i) / float(PARALLEL_SAMPLES)
+		var x: float = lerpf(sh, -sh, u)
+		var z: float = straight_z + parallel_z_offset
+		pit_curve.add_point(Vector3(x, 0.0, z))
+		pit_centers.append(Vector3(x, 0.0, z))
+		pit_blends.append(1.0)
+	# Phase 3 — merge OUT (west end). x: -sh → -loop_rx, z: parallel
+	# back to STRAIGHT_Z.
+	for i in range(MERGE_SAMPLES):
+		var u: float = float(i + 1) / float(MERGE_SAMPLES)
+		var x: float = lerpf(-sh, -loop_rx, u)
+		var ease: float = smoothstep(0.0, 1.0, 1.0 - u)
+		var z: float = straight_z + parallel_z_offset * ease
+		pit_curve.add_point(Vector3(x, 0.0, z))
+		pit_centers.append(Vector3(x, 0.0, z))
+		pit_blends.append(ease)
+	pit_path.curve = pit_curve
+
+	# Pit asphalt — extruded along the FULL curve. The centreline starts
+	# on the track centreline at p=0/1 and curves out + back, so the
+	# pit asphalt visually fans off the racing line and re-merges.
+	var pit_csg := CSGPolygon3D.new()
+	pit_csg.name = "PitAsphalt"
+	pit_csg.mode = CSGPolygon3D.MODE_PATH
+	pit_csg.path_node = pit_path.get_path()
+	pit_csg.path_interval_type = CSGPolygon3D.PATH_INTERVAL_DISTANCE
+	pit_csg.path_interval = 0.5
+	pit_csg.path_joined = false
+	pit_csg.polygon = PackedVector2Array([
+		Vector2(-pit_lane_width * 0.5, 0.045),
+		Vector2( pit_lane_width * 0.5, 0.045),
+		Vector2( pit_lane_width * 0.5, -0.04),
+		Vector2(-pit_lane_width * 0.5, -0.04),
+	])
 	var pit_mat := StandardMaterial3D.new()
 	pit_mat.albedo_color = asphalt_color
 	pit_mat.roughness = 0.85
-	pit_main.material_override = pit_mat
-	pit_main.position = Vector3(0.0, 0.005, pit_z)
-	parent.add_child(pit_main)
+	pit_csg.material_override = pit_mat
+	parent.add_child(pit_csg)
 
-	# Entry / exit ramps — slope diagonally from the pit-lane corner
-	# all the way to the track centreline at the loop's east/west
-	# extreme (where the straight meets the south loop). The ramp
-	# overshoots SLIGHTLY past the centreline so its end clearly
-	# overlaps the track asphalt — no visible grass gap.
-	for end_sign: float in [-1.0, 1.0]:
-		# Pit-side corner: end of the pit lane on this side.
-		var ramp_a := Vector3(end_sign * sh, 0.005, pit_z)
-		# Track-side corner: where the straight meets the loop
-		# (loop east/west extreme), at the track centreline. We push
-		# 0.5 m INTO the track on z so the ramp end clearly overlaps
-		# the track asphalt strip.
-		var ramp_b := Vector3(end_sign * loop_rx, 0.005, straight_z - 0.5)
-		var ramp_dir := ramp_b - ramp_a
-		var ramp_len_actual: float = ramp_dir.length()
-		if ramp_len_actual < 0.05:
-			continue
-		var ramp := MeshInstance3D.new()
-		var ramp_bm := BoxMesh.new()
-		# Ramp width matches the pit lane so the merge reads as a
-		# continuous strip, not a thinning triangle.
-		ramp_bm.size = Vector3(ramp_len_actual, 0.08, pit_lane_width)
-		ramp.mesh = ramp_bm
-		ramp.material_override = pit_mat
-		ramp.position = (ramp_a + ramp_b) * 0.5
-		ramp.rotation.y = atan2(-ramp_dir.z, ramp_dir.x)
-		parent.add_child(ramp)
-		# Yellow blend-zone stripe on the inside edge of the ramp
-		# (the side closest to the racing line) — instantly readable
-		# as "pit entry / exit" from above, like real F1 venues.
-		var stripe := MeshInstance3D.new()
-		var stripe_bm := BoxMesh.new()
-		stripe_bm.size = Vector3(ramp_len_actual, 0.10, 0.18)
-		stripe.mesh = stripe_bm
-		var stripe_mat := StandardMaterial3D.new()
-		stripe_mat.albedo_color = Color(0.98, 0.84, 0.20)
-		stripe_mat.emission_enabled = true
-		stripe_mat.emission = Color(0.98, 0.84, 0.20)
-		stripe_mat.emission_energy_multiplier = 1.2
-		stripe.material_override = stripe_mat
-		# Offset to the south side of the ramp (toward the track).
-		var inner_offset: float = pit_lane_width * 0.5 - 0.10
-		var inner_dir := Vector3(-ramp_dir.z, 0.0, ramp_dir.x).normalized()
-		stripe.position = (ramp_a + ramp_b) * 0.5 + inner_dir * (-inner_offset) \
-			+ Vector3(0.0, 0.05, 0.0)
-		stripe.rotation.y = atan2(-ramp_dir.z, ramp_dir.x)
-		parent.add_child(stripe)
+	# Walls + garages live ONLY in the parallel section (blend ≈ 1) so
+	# nothing ever clips the racing line at the merges.
+	const PARALLEL_BLEND_THRESHOLD: float = 0.95
+	var parallel_indices: Array[int] = []
+	for i in range(pit_blends.size()):
+		if pit_blends[i] >= PARALLEL_BLEND_THRESHOLD:
+			parallel_indices.append(i)
 
-	# Pit wall — thin slab on the SOUTH edge of the pit lane (between
-	# pit and track). Stretches the length of the main pit straight.
-	var wall_h: float = 0.55
-	var wall := MeshInstance3D.new()
-	wall.name = "PitWall"
-	var wall_bm := BoxMesh.new()
-	wall_bm.size = Vector3(2.0 * sh, wall_h, 0.18)
-	wall.mesh = wall_bm
-	var wall_mat := StandardMaterial3D.new()
-	wall_mat.albedo_color = Color(0.92, 0.92, 0.95)
-	wall.material_override = wall_mat
-	wall.position = Vector3(0.0, wall_h * 0.5 + 0.05,
-		pit_z - pit_lane_width * 0.5 + 0.09)
-	parent.add_child(wall)
-	# Cyan accent stripe along the top of the wall.
-	var accent := MeshInstance3D.new()
-	accent.name = "PitWallAccent"
-	var accent_bm := BoxMesh.new()
-	accent_bm.size = Vector3(2.0 * sh, 0.10, 0.22)
-	accent.mesh = accent_bm
-	var accent_mat := StandardMaterial3D.new()
-	accent_mat.albedo_color = _PIT_LANE_COLOR
-	accent_mat.emission_enabled = true
-	accent_mat.emission = _PIT_LANE_COLOR
-	accent_mat.emission_energy_multiplier = 1.4
-	accent.material_override = accent_mat
-	accent.position = Vector3(0.0, wall_h + 0.10,
-		pit_z - pit_lane_width * 0.5 + 0.09)
-	parent.add_child(accent)
+	# Pit wall — single straight slab on the south edge of the pit
+	# straight. Spans the parallel section only.
+	if parallel_indices.size() >= 2:
+		var wall_h: float = 0.55
+		var first_x: float = pit_centers[parallel_indices[0]].x
+		var last_x: float = pit_centers[parallel_indices[parallel_indices.size() - 1]].x
+		var wall_len: float = absf(first_x - last_x)
+		var wall_center_x: float = (first_x + last_x) * 0.5
+		var wall_z: float = straight_z + parallel_z_offset \
+			- pit_lane_width * 0.5 + 0.09
+		var wall := MeshInstance3D.new()
+		wall.name = "PitWall"
+		var wall_bm := BoxMesh.new()
+		wall_bm.size = Vector3(wall_len, wall_h, 0.18)
+		wall.mesh = wall_bm
+		var wall_mat := StandardMaterial3D.new()
+		wall_mat.albedo_color = Color(0.92, 0.92, 0.95)
+		wall.material_override = wall_mat
+		wall.position = Vector3(wall_center_x, wall_h * 0.5 + 0.05, wall_z)
+		parent.add_child(wall)
+		# Cyan accent on top.
+		var accent := MeshInstance3D.new()
+		accent.name = "PitWallAccent"
+		var accent_bm := BoxMesh.new()
+		accent_bm.size = Vector3(wall_len, 0.10, 0.22)
+		accent.mesh = accent_bm
+		var accent_mat := StandardMaterial3D.new()
+		accent_mat.albedo_color = _PIT_LANE_COLOR
+		accent_mat.emission_enabled = true
+		accent_mat.emission = _PIT_LANE_COLOR
+		accent_mat.emission_energy_multiplier = 1.4
+		accent.material_override = accent_mat
+		accent.position = Vector3(wall_center_x, wall_h + 0.10, wall_z)
+		parent.add_child(accent)
 
-	# Centre-line dashes along the pit straight.
+	# Centre-line dashes along the parallel section only.
 	var dash_count: int = 12
-	for i in range(dash_count):
-		var u: float = (float(i) + 0.5) / float(dash_count)
-		var dash_x: float = lerpf(-sh + 0.4, sh - 0.4, u)
-		var dash := MeshInstance3D.new()
-		var dbm := BoxMesh.new()
-		dbm.size = Vector3(0.5, 0.06, 0.10)
-		dash.mesh = dbm
-		var dmat := StandardMaterial3D.new()
-		dmat.albedo_color = Color(0.85, 0.85, 0.90)
-		dash.material_override = dmat
-		dash.position = Vector3(dash_x, 0.07, pit_z)
-		parent.add_child(dash)
+	var parallel_pit_z: float = straight_z + parallel_z_offset
+	if parallel_indices.size() >= 2:
+		var dash_first_x: float = pit_centers[parallel_indices[0]].x
+		var dash_last_x: float = pit_centers[parallel_indices[parallel_indices.size() - 1]].x
+		for i in range(dash_count):
+			var u: float = (float(i) + 0.5) / float(dash_count)
+			var dash_x: float = lerpf(dash_first_x, dash_last_x, u)
+			var dash := MeshInstance3D.new()
+			var dbm := BoxMesh.new()
+			dbm.size = Vector3(0.5, 0.06, 0.10)
+			dash.mesh = dbm
+			var dmat := StandardMaterial3D.new()
+			dmat.albedo_color = Color(0.85, 0.85, 0.90)
+			dash.material_override = dmat
+			dash.position = Vector3(dash_x, 0.07, parallel_pit_z)
+			parent.add_child(dash)
 
 	# Garage row NORTH of the pit lane (further from track). 1→14 bays
-	# scaling with facility level, evenly spaced along the pit straight
-	# (28 m straight gives ~2.0 m per bay at the cap, comfortably past
-	# the user's required 10-bay minimum at tier 10).
+	# scaling with facility level, evenly spaced along the parallel
+	# section of the pit straight (28 m gives ~2 m per bay at the cap,
+	# past the user's 10-bay minimum target for tier 10).
 	var bays: int = clampi(1 + roundi((float(level) - 1.0) * 13.0
 		/ float(maxi(Facilities.MAX_LEVEL - 1, 1))), 1, 14)
 	var bay_w: float = 2.0
 	var bay_d: float = 3.4 + float(level) * 0.05
 	var bay_h: float = 2.6 + float(level) * 0.05
-	var garage_z: float = pit_z + pit_lane_width * 0.5 + bay_d * 0.5 + 0.30
+	var garage_z: float = parallel_pit_z + pit_lane_width * 0.5 \
+		+ bay_d * 0.5 + 0.30
+	# Garage row spans the same X range as the pit-wall (parallel
+	# section). Falls back to ±sh if the parallel section is degenerate.
+	var garage_first_x: float = -sh + bay_w * 0.6
+	var garage_last_x: float = sh - bay_w * 0.6
+	if parallel_indices.size() >= 2:
+		garage_first_x = pit_centers[parallel_indices[0]].x + bay_w * 0.6
+		garage_last_x = pit_centers[parallel_indices[parallel_indices.size() - 1]].x - bay_w * 0.6
+		# Curve sweeps east → west, so flip if needed for stable ordering.
+		if garage_first_x > garage_last_x:
+			var tmp := garage_first_x
+			garage_first_x = garage_last_x
+			garage_last_x = tmp
 	for i in range(bays):
 		var bay_p: float
 		if bays == 1:
 			bay_p = 0.5
 		else:
 			bay_p = float(i) / float(bays - 1)
-		var bay_x: float = lerpf(-sh + bay_w * 0.6,
-			sh - bay_w * 0.6, bay_p)
+		var bay_x: float = lerpf(garage_first_x, garage_last_x, bay_p)
 		# Garage body
 		var garage := MeshInstance3D.new()
 		var gbm := BoxMesh.new()
@@ -449,28 +493,30 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 		parent.add_child(door)
 
 	# Paddock — flat asphalt slab behind the garages where teams park
-	# their motorhomes. Spans the same X range as the pit straight.
+	# their motorhomes. Spans the parallel section's X range.
 	var paddock_d: float = 5.5 + float(level) * 0.08
 	var paddock_z: float = garage_z + bay_d * 0.5 + paddock_d * 0.5 + 0.5
+	var paddock_w: float = absf(garage_last_x - garage_first_x) + bay_w + 1.0
+	var paddock_center_x: float = (garage_first_x + garage_last_x) * 0.5
 	var paddock := MeshInstance3D.new()
 	paddock.name = "Paddock"
 	var paddock_bm := BoxMesh.new()
-	paddock_bm.size = Vector3(2.0 * sh + 1.0, 0.06, paddock_d)
+	paddock_bm.size = Vector3(paddock_w, 0.06, paddock_d)
 	paddock.mesh = paddock_bm
 	var paddock_mat := StandardMaterial3D.new()
 	paddock_mat.albedo_color = Color(0.50, 0.52, 0.55)
 	paddock_mat.roughness = 0.9
 	paddock.material_override = paddock_mat
-	paddock.position = Vector3(0.0, 0.04, paddock_z)
+	paddock.position = Vector3(paddock_center_x, 0.04, paddock_z)
 	parent.add_child(paddock)
 
 	# Click area covers the whole pit complex.
-	var click_z_center: float = (pit_z + paddock_z) * 0.5
+	var click_z_center: float = (parallel_pit_z + paddock_z) * 0.5
 	var click_z_size: float = (paddock_z + paddock_d * 0.5) \
-		- (pit_z - pit_lane_width * 0.5) + 1.0
+		- (parallel_pit_z - pit_lane_width * 0.5) + 1.0
 	_add_facility_click_area(parent, "pit_lane",
 		Vector3(0, bay_h * 0.5, click_z_center),
-		Vector3(2.0 * sh + 4.0, bay_h * 1.8, click_z_size))
+		Vector3(2.0 * loop_rx + 4.0, bay_h * 1.8, click_z_size))
 
 
 func _build_lounge(parent: Node3D, level: int) -> void:
