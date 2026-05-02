@@ -127,20 +127,6 @@ func _add_track_rows() -> void:
 			_build_rows()
 	)
 
-	_add_section_header("BUY KARTS")
-	var can_buy := _track.can_buy_kart()
-	var kart_cost := _track.buy_kart_cost()
-	_add_buy_row(
-		Color(0.55, 0.92, 0.38),
-		"Buy Kart",
-		"%d / %d karts" % [_track.karts.size(), _track.kart_capacity()],
-		can_buy,
-		kart_cost,
-		func():
-			_track.buy_kart()
-			_build_rows()
-	)
-
 
 # ---------------------------------------------------------------------------
 # KART TAB
@@ -148,6 +134,18 @@ func _add_track_rows() -> void:
 func _add_kart_rows() -> void:
 	var k_tier := _track.kart_tier()
 	var k_lvl  := _track.kart_level
+
+	_add_section_header("BUY KARTS")
+	_add_buy_row(
+		Color(0.55, 0.92, 0.38),
+		"Buy Kart",
+		"%d / %d karts" % [_track.karts.size(), _track.kart_capacity()],
+		_track.can_buy_kart(),
+		_track.buy_kart_cost(),
+		func():
+			_track.buy_kart()
+			_build_rows()
+	)
 
 	_add_section_header("FLEET LEVEL")
 	_add_upgrade_row(

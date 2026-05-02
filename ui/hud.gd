@@ -44,7 +44,6 @@ func _ready() -> void:
 	EventBus.track_level_changed.connect(_on_track_level_changed)
 	EventBus.kart_count_changed.connect(_on_kart_count_changed)
 	EventBus.daily_event_triggered.connect(_on_daily_event)
-	EventBus.day_changed.connect(_on_day_started)
 
 	ticket_minus.pressed.connect(func(): GameManager.bump_ticket_price(-GameManager.TICKET_STEP))
 	ticket_plus.pressed.connect(func():  GameManager.bump_ticket_price( GameManager.TICKET_STEP))
@@ -137,6 +136,12 @@ func _refresh_venue_label() -> void:
 
 
 func _on_day_ended(summary: Dictionary) -> void:
+	# Clear the previous day's event tag here so it's gone before the next
+	# day's daily_event_triggered (which fires synchronously from
+	# DailyEvents on day_changed) can set a new one.
+	if event_tag:
+		event_tag.text = ""
+		event_tag.visible = false
 	var profit_color := Color(0.55, 0.92, 0.38) if summary.profit >= 0 else Color(0.96, 0.27, 0.36)
 	_flash(
 		"Day %d ended  —  Revenue €%s  |  Costs €%s  |  Profit €%s" % [
@@ -162,14 +167,6 @@ func _on_daily_event(event: Dictionary) -> void:
 		6.0
 	)
 	_show_event_tag(event)
-
-
-func _on_day_started(_day: int) -> void:
-	# Clear the persistent tag at the start of every day; if a new event
-	# triggers it will be re-shown by _on_daily_event.
-	if event_tag:
-		event_tag.text = ""
-		event_tag.visible = false
 
 
 func _show_event_tag(event: Dictionary) -> void:
