@@ -53,6 +53,8 @@ func chassis_maintenance_multiplier() -> float:
 	return maxf(0.3, 1.0 - (chassis_level - 1) * 0.006)
 
 func suit_reputation_bonus() -> int:
+	# +1 reputation per race for every 10 suit levels (level 11 = 1, 21 = 2, ...)
+	@warning_ignore("integer_division")
 	return (suit_level - 1) / 10
 
 func brakes_patience_bonus() -> float:

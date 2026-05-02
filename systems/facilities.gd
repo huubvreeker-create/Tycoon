@@ -59,6 +59,8 @@ func lounge_satisfaction_bonus() -> float:
 	return lounge_level * 0.012
 
 func lounge_reputation_per_race() -> int:
+	# +1 reputation per race for every 4 lounge levels (level 4 = 1, 8 = 2, ...)
+	@warning_ignore("integer_division")
 	return lounge_level / 4
 
 func merch_daily_income() -> int:

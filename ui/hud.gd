@@ -33,6 +33,7 @@ signal settings_pressed
 @onready var alert_label: Label          = %AlertLabel
 @onready var alert_panel: PanelContainer = $AlertHolder/AlertPanel
 @onready var alert_timer: Timer          = %AlertTimer
+@onready var debug_overlay: Label        = %DebugOverlay
 
 var _venue_name: String = "Hometown Indoor"
 var _track_tier: int = 1
@@ -229,3 +230,22 @@ func _process(_delta: float) -> void:
 		var should_disable := EconomyManager.cash < cost
 		if buy_kart_button.disabled != should_disable:
 			buy_kart_button.disabled = should_disable
+	_refresh_debug_overlay()
+
+
+func _refresh_debug_overlay() -> void:
+	if debug_overlay == null:
+		return
+	if _track == null:
+		debug_overlay.text = "[DEBUG]\nTrack: NULL\nFPS: %d" % Engine.get_frames_per_second()
+		return
+	debug_overlay.text = "[DEBUG]\nTier %d Lvl %d\nKarts %d / %d\nQueue %d  Racing %d\nCash €%d\nFPS: %d" % [
+		_track.track_tier(),
+		_track.track_level,
+		_track.karts.size(),
+		_track.kart_capacity(),
+		_track.queue.size(),
+		_track.racing.size(),
+		EconomyManager.cash,
+		Engine.get_frames_per_second(),
+	]

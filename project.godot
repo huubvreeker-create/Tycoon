@@ -39,6 +39,11 @@ window/stretch/aspect="keep_width"
 pointing/emulate_touch_from_mouse=true
 pointing/emulate_mouse_from_touch=false
 
+[debug]
+
+gdscript/warnings/unused_signal=0
+gdscript/warnings/integer_division=0
+
 [rendering]
 
 renderer/rendering_method="mobile"
