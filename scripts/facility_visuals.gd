@@ -35,6 +35,9 @@ var _track: Track
 var _root_holders := {}  # facility name → Node3D holder
 var _decoration_holder: Node3D
 var _customer_holder: Node3D
+var _traffic_holder: Node3D
+var _traffic_cars: Array = []
+var _traffic_spawn_timer: float = 2.0
 
 
 func _ready() -> void:
@@ -56,6 +59,11 @@ func _ready() -> void:
 	_customer_holder = Node3D.new()
 	_customer_holder.name = "CustomerHolder"
 	add_child(_customer_holder)
+	# Animated traffic — visiting cars drive in through the south
+	# gate, pause at the parking lot, then drive back out.
+	_traffic_holder = Node3D.new()
+	_traffic_holder.name = "TrafficHolder"
+	add_child(_traffic_holder)
 	EventBus.facility_upgraded.connect(_on_facility_upgraded)
 	# Track size only changes on tier rollover (per-level upgrades buy
 	# stats, not new geometry), so we only need to rebuild facility
@@ -1705,3 +1713,182 @@ func _parking_lot_depth() -> float:
 		return 0.0
 	var rows: int = clampi(2 + lvl / 6, 2, 12)
 	return float(rows) * 2.8
+
+
+# ---------------------------------------------------------------------------
+# Animated visiting-car traffic
+# ---------------------------------------------------------------------------
+# Cars spawn off-map south of the gate, drive into the venue along
+# the approach road, "park" at the south edge of the parking lot for
+# a few seconds, then reverse the path and despawn off-map. Cap at
+# _MAX_TRAFFIC simultaneous cars so we don't flood the camera.
+const _MAX_TRAFFIC: int = 8
+const _TRAFFIC_CAR_SPEED: float = 9.0       # metres per second on road
+const _TRAFFIC_PARK_DURATION: float = 4.0   # seconds parked before leaving
+const _TRAFFIC_SPAWN_INTERVAL: float = 4.5  # base spawn cadence
+
+
+func _process(delta: float) -> void:
+	if _traffic_holder == null:
+		return
+	# Tick existing cars + cull finished ones.
+	var i: int = _traffic_cars.size() - 1
+	while i >= 0:
+		var car: Dictionary = _traffic_cars[i]
+		_tick_traffic_car(car, delta)
+		if car.get("done", false):
+			var mesh: Node = car.get("mesh")
+			if mesh and is_instance_valid(mesh):
+				mesh.queue_free()
+			_traffic_cars.remove_at(i)
+		i -= 1
+	# Periodic spawn.
+	_traffic_spawn_timer -= delta
+	if _traffic_spawn_timer <= 0.0:
+		_traffic_spawn_timer = _TRAFFIC_SPAWN_INTERVAL \
+			+ randf_range(-1.0, 1.5)
+		if _traffic_cars.size() < _MAX_TRAFFIC and _track != null:
+			_spawn_traffic_car()
+
+
+func _spawn_traffic_car() -> void:
+	var path: Array[Vector3] = _compute_traffic_path()
+	if path.is_empty():
+		return
+	# Random visitor-car colour. Slightly desaturated so they read as
+	# civilians, not racing karts.
+	var hue := randf()
+	var col := Color.from_hsv(hue, randf_range(0.45, 0.75),
+		randf_range(0.55, 0.85))
+
+	# Body
+	var car_mesh := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(1.6, 0.55, 3.2)
+	car_mesh.mesh = bm
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = col
+	mat.metallic = 0.4
+	mat.roughness = 0.5
+	car_mesh.material_override = mat
+	car_mesh.position = Vector3(path[0].x, 0.35, path[0].z)
+	_traffic_holder.add_child(car_mesh)
+
+	# Cabin / windshield (darker top half, set back)
+	var cabin := MeshInstance3D.new()
+	var cbm := BoxMesh.new()
+	cbm.size = Vector3(1.4, 0.45, 1.6)
+	cabin.mesh = cbm
+	var cmat := StandardMaterial3D.new()
+	cmat.albedo_color = Color(0.12, 0.14, 0.18)
+	cmat.roughness = 0.3
+	cabin.material_override = cmat
+	cabin.position = Vector3(0, 0.45, 0.1)
+	car_mesh.add_child(cabin)
+
+	# Four wheels
+	for off: Vector3 in [
+		Vector3( 0.85, -0.18,  1.10),
+		Vector3( 0.85, -0.18, -1.10),
+		Vector3(-0.85, -0.18,  1.10),
+		Vector3(-0.85, -0.18, -1.10),
+	]:
+		var wheel := MeshInstance3D.new()
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 0.22
+		cyl.bottom_radius = 0.22
+		cyl.height = 0.16
+		wheel.mesh = cyl
+		var wmat := StandardMaterial3D.new()
+		wmat.albedo_color = Color(0.10, 0.10, 0.12)
+		wmat.roughness = 0.85
+		wheel.material_override = wmat
+		wheel.position = off
+		wheel.rotation = Vector3(0, 0, deg_to_rad(90))
+		car_mesh.add_child(wheel)
+
+	var car: Dictionary = {
+		"mesh": car_mesh,
+		"path": path,
+		"idx": 0,
+		"progress": 0.0,
+		"state": "driving_in",
+		"park_until": 0.0,
+		"done": false,
+	}
+	_traffic_cars.append(car)
+
+
+func _compute_traffic_path() -> Array[Vector3]:
+	# Returns the 7-waypoint path:
+	#   off → gate → elbow → lot_entry  [PARK]  → elbow → gate → off
+	# If parking isn't built yet, no path exists (cars wouldn't have
+	# anywhere to go).
+	var lot_d: float = _parking_lot_depth()
+	var lot_w: float = _parking_lot_width()
+	if lot_d <= 0.0 or lot_w <= 0.0:
+		return []
+	var parking_south_z: float = -_track_outer_z(4.0) - lot_d - 1.0
+	var parking_entry_x: float = -_track_outer_x(5.0) - lot_w * 0.5 - 1.5
+	var off_map: Vector3 = Vector3(_WORLD_GATE_X, 0.04, _WORLD_SOUTH - 6.0)
+	var inside_gate: Vector3 = Vector3(_WORLD_GATE_X, 0.04, _WORLD_SOUTH + 0.6)
+	var elbow: Vector3 = Vector3(_WORLD_GATE_X, 0.04, parking_south_z)
+	var entry: Vector3 = Vector3(parking_entry_x, 0.04, parking_south_z)
+	return [off_map, inside_gate, elbow, entry, elbow, inside_gate, off_map]
+
+
+func _tick_traffic_car(car: Dictionary, delta: float) -> void:
+	if car.get("done", false):
+		return
+	var mesh: Node3D = car.get("mesh") as Node3D
+	if mesh == null or not is_instance_valid(mesh):
+		car.done = true
+		return
+	var path: Array = car.get("path", [])
+	if path.size() < 2:
+		car.done = true
+		return
+
+	# Handle the parked-state pause (no movement, just countdown).
+	if car.get("state", "") == "parked":
+		var now_s: float = float(Time.get_ticks_msec()) / 1000.0
+		if now_s >= float(car.get("park_until", 0.0)):
+			car["state"] = "driving_out"
+		return
+
+	# Drive forward along current segment.
+	var idx: int = int(car.get("idx", 0))
+	if idx >= path.size() - 1:
+		car["done"] = true
+		return
+	var a: Vector3 = path[idx]
+	var b: Vector3 = path[idx + 1]
+	var seg: Vector3 = b - a
+	var seg_len: float = seg.length()
+	if seg_len < 0.01:
+		car["idx"] = idx + 1
+		car["progress"] = 0.0
+		return
+	var p_now: float = float(car.get("progress", 0.0)) \
+		+ _TRAFFIC_CAR_SPEED * delta / seg_len
+	if p_now >= 1.0:
+		# Segment done — snap to endpoint and advance.
+		car["progress"] = 0.0
+		car["idx"] = idx + 1
+		mesh.position = Vector3(b.x, 0.35, b.z)
+		# Trigger park state when we reach the lot entry (path[3]).
+		if car["idx"] == 3 and car.get("state", "") == "driving_in":
+			car["state"] = "parked"
+			var now_s2: float = float(Time.get_ticks_msec()) / 1000.0
+			car["park_until"] = now_s2 + _TRAFFIC_PARK_DURATION
+		elif car["idx"] >= path.size() - 1:
+			car["done"] = true
+		return
+	# Normal frame — interpolate.
+	car["progress"] = p_now
+	var pos: Vector3 = a.lerp(b, p_now)
+	mesh.position = Vector3(pos.x, 0.35, pos.z)
+	# Face the direction of travel.
+	var dir2 := Vector2(seg.x, seg.z)
+	if dir2.length_squared() > 0.0001:
+		mesh.rotation.y = atan2(-dir2.y, dir2.x)
