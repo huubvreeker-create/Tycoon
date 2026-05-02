@@ -212,7 +212,7 @@ func upgrade_karts() -> bool:
 	var prev_tier := kart_tier()
 	kart_level += 1
 	var new_tier := kart_tier()
-	for k in karts:
+	for k: Kart in karts:
 		k.set_level(kart_level)
 	if new_tier != prev_tier:
 		EventBus.kart_tier_changed.emit(new_tier)
@@ -235,8 +235,8 @@ func buy_kart() -> bool:
 # --- 3D construction -------------------------------------------------------
 func _rebuild_for_new_tier() -> void:
 	# Detach karts so they don't get freed with the old path.
-	for k in karts:
-		var p := k.get_parent()
+	for k: Kart in karts:
+		var p: Node = k.get_parent()
 		if p != null:
 			p.remove_child(k)
 	if path:
@@ -253,8 +253,8 @@ func _rebuild_for_new_tier() -> void:
 	_build_path()
 	_build_asphalt()
 	_build_click_area()
-	for k in karts:
-		var prev_progress := k.progress
+	for k: Kart in karts:
+		var prev_progress: float = k.progress
 		path.add_child(k)
 		k.progress = prev_progress
 
@@ -463,7 +463,7 @@ func _tick_queue(delta: float) -> void:
 
 
 func _find_free_kart() -> Kart:
-	for k in karts:
+	for k: Kart in karts:
 		if not k.is_busy():
 			return k
 	return null
