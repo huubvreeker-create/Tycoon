@@ -258,129 +258,207 @@ func _build_cafeteria(parent: Node3D, level: int) -> void:
 
 
 func _build_pit_lane(parent: Node3D, level: int) -> void:
-	# A real pit complex: pit lane (asphalt) parallel to the track's long
-	# straight, separated by a pit wall, with a row of garages on the
-	# outside and short asphalt connectors merging the pit lane back into
-	# the main track at each end. Scales with level.
+	# Pit complex: a SECOND ASPHALT STRIP that follows the same curve
+	# as the main track on the +Z side, branching off at one corner,
+	# arcing outward, and merging back at the other corner — exactly
+	# how a real F1 pit lane comes out of and back into the racing
+	# line. Built with two CSGPolygon3D extrusions along a custom
+	# Path3D so the shape is genuinely curved (no diagonal stitching).
 	var rx := _track_rx()
 	var rz := _track_rz()
 	var asphalt_color := Color(0.10, 0.11, 0.14)
 
-	# Pit straight runs along the long axis (X) on the +Z side.
-	# Width grows with facility level; length stays close to the track
-	# diameter (real circuits run pit straights alongside a long track
-	# straight).
-	var pit_lane_width: float = 2.6 + level * 0.06
-	var pit_lane_length: float = rx * 1.2
-	# Anchor the pit-lane's NEAR edge (the side facing the track) just
-	# past the rumble strip — only ~1m of grass between them so it
-	# reads as a real parallel pit lane instead of a far-away road.
-	const SAFETY: float = 1.2
-	var pit_lane_z: float = _track_outer_z(SAFETY) + pit_lane_width * 0.5
-	# Asphalt
-	_make_box(parent, Vector3(pit_lane_length, 0.08, pit_lane_width),
-		Vector3(0, 0.04, pit_lane_z),
-		asphalt_color)
-	# Centre line markings (small white dashes along the pit lane).
-	var dash_count: int = 8
+	# Width grows with facility level; the lane covers the +Z arc of
+	# the oval from t_start to t_end (centered at π/2 = top of oval).
+	var pit_lane_width: float = 2.6 + float(level) * 0.06
+	# Maximum outward offset at the apex of the pit curve. Has to clear
+	# the rumble strip + give breathing room for the wall + lane.
+	var asphalt_outer: float = _track.current_asphalt_width() * 0.5 \
+		+ _track.current_wave_amp() + _RUMBLE_INSET_VAL
+	const APEX_GAP: float = 1.2     # gap between pit's INNER edge and rumble at apex
+	var max_offset: float = asphalt_outer + pit_lane_width * 0.5 + APEX_GAP
+	# Arc range — covers ~120° centred on the +Z apex (90°).
+	var t_start: float = deg_to_rad(30.0)
+	var t_end: float = deg_to_rad(150.0)
+	var t_range: float = t_end - t_start
+	var segments: int = 64
+
+	# Build the curved Path3D for the pit lane. At each sample we offset
+	# the oval point outward by a sin-weighted amount so the curve sits
+	# ON the track centreline at both ends and at its peak in the middle.
+	var pit_path := Path3D.new()
+	pit_path.name = "PitPath"
+	parent.add_child(pit_path)
+	var pit_curve := Curve3D.new()
+	var pit_centers: Array[Vector3] = []
+	var pit_normals: Array[Vector2] = []
+	var pit_t_values: Array[float] = []
+	for i in range(segments + 1):
+		var p: float = float(i) / float(segments)
+		var t: float = t_start + p * t_range
+		var oval_pt := Vector3(rx * cos(t), 0.0, rz * sin(t))
+		var n := Vector2(rz * cos(t), rx * sin(t)).normalized()
+		# sin(p * π) → 0 at p=0 / p=1, peaks at p=0.5
+		var offset_amt: float = sin(p * PI) * max_offset
+		var center := Vector3(
+			oval_pt.x + n.x * offset_amt,
+			0.0,
+			oval_pt.z + n.y * offset_amt)
+		pit_curve.add_point(center)
+		pit_centers.append(center)
+		pit_normals.append(n)
+		pit_t_values.append(t)
+	pit_path.curve = pit_curve
+
+	# Pit asphalt — extruded along the curve as a CSGPolygon3D, same
+	# technique as the main track's asphalt strip.
+	var pit_csg := CSGPolygon3D.new()
+	pit_csg.name = "PitAsphalt"
+	pit_csg.mode = CSGPolygon3D.MODE_PATH
+	pit_csg.path_node = pit_path.get_path()
+	pit_csg.path_interval_type = CSGPolygon3D.PATH_INTERVAL_DISTANCE
+	pit_csg.path_interval = 0.5
+	pit_csg.path_joined = false
+	pit_csg.polygon = PackedVector2Array([
+		Vector2(-pit_lane_width * 0.5, 0.06),
+		Vector2( pit_lane_width * 0.5, 0.06),
+		Vector2( pit_lane_width * 0.5, -0.04),
+		Vector2(-pit_lane_width * 0.5, -0.04),
+	])
+	var pit_mat := StandardMaterial3D.new()
+	pit_mat.albedo_color = asphalt_color
+	pit_mat.roughness = 0.85
+	pit_csg.material_override = pit_mat
+	parent.add_child(pit_csg)
+
+	# Pit wall — a thin strip along the SAME curve, on the inner side
+	# (the side facing the track). Built as another CSGPolygon3D so it
+	# bends with the curve.
+	var wall_h: float = 0.55
+	var wall_csg := CSGPolygon3D.new()
+	wall_csg.name = "PitWall"
+	wall_csg.mode = CSGPolygon3D.MODE_PATH
+	wall_csg.path_node = pit_path.get_path()
+	wall_csg.path_interval_type = CSGPolygon3D.PATH_INTERVAL_DISTANCE
+	wall_csg.path_interval = 0.5
+	wall_csg.path_joined = false
+	# Inner side of pit lane = -X in the path's local frame. The wall is
+	# a thin vertical slab there.
+	wall_csg.polygon = PackedVector2Array([
+		Vector2(-pit_lane_width * 0.5 - 0.18, wall_h),
+		Vector2(-pit_lane_width * 0.5,        wall_h),
+		Vector2(-pit_lane_width * 0.5,        0.06),
+		Vector2(-pit_lane_width * 0.5 - 0.18, 0.06),
+	])
+	var wall_mat := StandardMaterial3D.new()
+	wall_mat.albedo_color = Color(0.92, 0.92, 0.95)
+	wall_csg.material_override = wall_mat
+	parent.add_child(wall_csg)
+
+	# Cyan accent strip on top of the pit wall, also extruded along the curve.
+	var accent_csg := CSGPolygon3D.new()
+	accent_csg.name = "PitWallAccent"
+	accent_csg.mode = CSGPolygon3D.MODE_PATH
+	accent_csg.path_node = pit_path.get_path()
+	accent_csg.path_interval_type = CSGPolygon3D.PATH_INTERVAL_DISTANCE
+	accent_csg.path_interval = 0.5
+	accent_csg.path_joined = false
+	accent_csg.polygon = PackedVector2Array([
+		Vector2(-pit_lane_width * 0.5 - 0.20, wall_h + 0.10),
+		Vector2(-pit_lane_width * 0.5 + 0.02, wall_h + 0.10),
+		Vector2(-pit_lane_width * 0.5 + 0.02, wall_h),
+		Vector2(-pit_lane_width * 0.5 - 0.20, wall_h),
+	])
+	var accent_mat := StandardMaterial3D.new()
+	accent_mat.albedo_color = _PIT_LANE_COLOR
+	accent_mat.emission_enabled = true
+	accent_mat.emission = _PIT_LANE_COLOR
+	accent_mat.emission_energy_multiplier = 1.4
+	accent_csg.material_override = accent_mat
+	parent.add_child(accent_csg)
+
+	# Centre line dashes along the curve.
+	var dash_count: int = 14
 	for i in range(dash_count):
 		var u: float = (float(i) + 0.5) / float(dash_count)
-		var dx: float = (u - 0.5) * pit_lane_length * 0.92
-		_make_box(parent, Vector3(0.45, 0.10, 0.10),
-			Vector3(dx, 0.08, pit_lane_z),
-			Color(0.85, 0.85, 0.90))
+		var idx: int = clampi(int(u * float(segments)), 0, pit_centers.size() - 1)
+		var c: Vector3 = pit_centers[idx]
+		var n: Vector2 = pit_normals[idx]
+		# Orient the dash along the curve tangent (perpendicular to normal).
+		var tangent_dir := Vector2(-n.y, n.x)  # 90° CCW from normal
+		var dash := MeshInstance3D.new()
+		var dbm := BoxMesh.new()
+		dbm.size = Vector3(0.5, 0.10, 0.10)
+		dash.mesh = dbm
+		var dmat := StandardMaterial3D.new()
+		dmat.albedo_color = Color(0.85, 0.85, 0.90)
+		dash.material_override = dmat
+		dash.position = Vector3(c.x, 0.10, c.z)
+		dash.rotation.y = atan2(-tangent_dir.y, tangent_dir.x)
+		parent.add_child(dash)
 
-	# Pit wall — between the pit lane and the main track.
-	var wall_h: float = 0.55
-	var wall_z: float = pit_lane_z - pit_lane_width * 0.5 - 0.15
-	_make_box(parent, Vector3(pit_lane_length * 0.96, wall_h, 0.18),
-		Vector3(0, wall_h * 0.5, wall_z),
-		Color(0.92, 0.92, 0.95))
-	# Wall base accent (cyan stripe along the top of the wall).
-	_make_label_strip(parent, _PIT_LANE_COLOR,
-		Vector3(0, wall_h + 0.05, wall_z),
-		Vector3(pit_lane_length * 0.96, 0.10, 0.20))
-
-	# Garage row on the OUTSIDE of the pit lane (further from the track).
-	# 1 box per ~2 cars: scales 1 → 11 across pit_lane level 1 → 100,
-	# matching tier-10's 22-car grid (2 cars per box).
+	# Garage row on the OUTSIDE of the curve, evenly spaced along the
+	# middle 60% of the arc (skip the merge ends). 1 → 11 bays scaling
+	# with the pit-lane level.
 	var bays: int = clampi(1 + roundi((float(level) - 1.0) * 10.0
 		/ float(maxi(Facilities.MAX_LEVEL - 1, 1))), 1, 11)
 	var bay_w: float = 2.6
-	var bay_d: float = 3.4 + level * 0.05
-	var bay_h: float = 2.6 + level * 0.05
-	var total_garages_length: float = bays * bay_w
-	var garage_z: float = pit_lane_z + pit_lane_width * 0.5 + bay_d * 0.5 + 0.15
+	var bay_d: float = 3.4 + float(level) * 0.05
+	var bay_h: float = 2.6 + float(level) * 0.05
 	for i in range(bays):
-		var bay_x: float = -total_garages_length * 0.5 + i * bay_w + bay_w * 0.5
-		# Garage box
-		_make_box(parent, Vector3(bay_w * 0.95, bay_h, bay_d),
-			Vector3(bay_x, bay_h * 0.5, garage_z),
-			_PIT_LANE_COLOR.darkened(0.65))
-		# Open door front (lighter slab on the side facing the pit lane)
-		_make_label_strip(parent, _PIT_LANE_COLOR,
-			Vector3(bay_x, bay_h * 0.4, garage_z - bay_d * 0.5 - 0.01),
-			Vector3(bay_w * 0.78, bay_h * 0.75, 0.05))
-		# Bay number plate above the door
-		_make_label_strip(parent, _PIT_LANE_COLOR.lightened(0.2),
-			Vector3(bay_x, bay_h + 0.10, garage_z - bay_d * 0.5 - 0.01),
-			Vector3(bay_w * 0.5, 0.18, 0.04))
-	# Garage roof spanning the bays
-	_make_box(parent, Vector3(total_garages_length + 0.3, 0.20, bay_d + 0.4),
-		Vector3(0, bay_h + 0.10, garage_z),
-		_PIT_LANE_COLOR.darkened(0.35))
+		var p: float
+		if bays == 1:
+			p = 0.5
+		else:
+			p = 0.2 + float(i) / float(bays - 1) * 0.6
+		var idx: int = clampi(int(p * float(segments)), 0, pit_centers.size() - 1)
+		var center: Vector3 = pit_centers[idx]
+		var n: Vector2 = pit_normals[idx]
+		# Garage centre = pit centre + outward normal * (pit_w/2 + bay_d/2 + small gap)
+		var radial_offset: float = pit_lane_width * 0.5 + bay_d * 0.5 + 0.30
+		var garage_pos := Vector3(
+			center.x + n.x * radial_offset,
+			bay_h * 0.5,
+			center.z + n.y * radial_offset)
+		# Rotation so bay_w (size.x) runs ALONG the curve tangent and
+		# bay_d (size.z) runs OUTWARD along the normal.
+		var rot_y: float = atan2(float(rz) * cos(pit_t_values[idx]),
+			float(rx) * sin(pit_t_values[idx]))
+		# Garage body
+		var garage := MeshInstance3D.new()
+		var gbm := BoxMesh.new()
+		gbm.size = Vector3(bay_w * 0.95, bay_h, bay_d)
+		garage.mesh = gbm
+		var gmat := StandardMaterial3D.new()
+		gmat.albedo_color = _PIT_LANE_COLOR.darkened(0.65)
+		gmat.metallic = 0.3
+		gmat.roughness = 0.6
+		garage.material_override = gmat
+		garage.position = garage_pos
+		garage.rotation.y = rot_y
+		parent.add_child(garage)
+		# Open door panel facing the pit lane (-Z in local frame).
+		var door := MeshInstance3D.new()
+		var dbm2 := BoxMesh.new()
+		dbm2.size = Vector3(bay_w * 0.78, bay_h * 0.75, 0.06)
+		door.mesh = dbm2
+		var door_mat := StandardMaterial3D.new()
+		door_mat.albedo_color = _PIT_LANE_COLOR
+		door_mat.emission_enabled = true
+		door_mat.emission = _PIT_LANE_COLOR
+		door_mat.emission_energy_multiplier = 0.6
+		door.material_override = door_mat
+		door.position = garage_pos + Vector3(-n.x * (bay_d * 0.5 + 0.04), 0, -n.y * (bay_d * 0.5 + 0.04))
+		door.position.y = bay_h * 0.4
+		door.rotation.y = rot_y
+		parent.add_child(door)
 
-	# Connector slips bridging the pit straight to the main track.
-	# Each end gets a connector whose START is the end of the pit
-	# straight and whose END sits on the track oval at a SHALLOW
-	# angle (close to t=80° / 100° — near the top of the oval, where
-	# the track tangent is mostly along the X-axis like the pit
-	# straight). This makes the connectors read as real merge ramps
-	# instead of steep diagonal slabs.
-	var connector_width: float = pit_lane_width * 0.85
-	# 80° from +X axis = nearly at the +Z apex of the oval; mirror to
-	# 100° for the -X end. The closer the angle is to 90°, the
-	# shallower the merge (more parallel to the pit straight).
-	var merge_angle: float = deg_to_rad(80.0)
-	var outer_offset: float = _track.current_asphalt_width() * 0.5 \
-		+ _track.current_wave_amp() + _RUMBLE_INSET_VAL
-	for sign_x: int in [-1, 1]:
-		var start_pos := Vector3(float(sign_x) * pit_lane_length * 0.5, 0.04, pit_lane_z)
-		# +X side merges at +80°; -X side at +100° (= 180° - 80°).
-		var t_angle: float = merge_angle if sign_x > 0 else (PI - merge_angle)
-		var oval_x: float = rx * cos(t_angle)
-		var oval_z: float = rz * sin(t_angle)
-		var n := Vector2(rz * cos(t_angle), rx * sin(t_angle)).normalized()
-		# End slightly inside the rumble strip so the connector visibly
-		# overlaps the asphalt's outer edge (instead of stopping just
-		# past it on the grass).
-		var end_pos := Vector3(
-			oval_x + n.x * (outer_offset - 0.3),
-			0.04,
-			oval_z + n.y * (outer_offset - 0.3))
-		var direction := end_pos - start_pos
-		var length: float = direction.length()
-		if length < 0.01:
-			continue
-		var center := (start_pos + end_pos) * 0.5
-		var connector := MeshInstance3D.new()
-		var bm := BoxMesh.new()
-		bm.size = Vector3(length, 0.08, connector_width)
-		connector.mesh = bm
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = asphalt_color
-		mat.roughness = 0.85
-		connector.material_override = mat
-		connector.position = center
-		connector.rotation.y = atan2(-direction.z, direction.x)
-		parent.add_child(connector)
-
-	# One large click area covering the pit straight + garages.
+	# Click area: rough bounding box centred on the apex of the pit curve.
+	var apex: Vector3 = pit_centers[pit_centers.size() / 2]
+	var click_size := Vector3(rx * 1.6, bay_h * 1.8, max_offset + bay_d + 4.0)
 	_add_facility_click_area(parent, "pit_lane",
-		Vector3(0, bay_h * 0.5, (pit_lane_z + garage_z) * 0.5),
-		Vector3(maxf(pit_lane_length, total_garages_length) + 1.5,
-			bay_h * 1.4,
-			(garage_z - pit_lane_z) + bay_d + pit_lane_width + 1.5))
+		Vector3(0, bay_h * 0.5, apex.z * 0.5),
+		click_size)
 
 
 func _build_lounge(parent: Node3D, level: int) -> void:
