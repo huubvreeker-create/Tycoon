@@ -21,7 +21,7 @@ signal tapped(screen_pos: Vector2)
 # vertical world span the camera shows). Pinch grows / shrinks them.
 @export var min_zoom: float = 18.0
 @export var max_zoom: float = 110.0
-@export var initial_zoom: float = 36.0
+@export var initial_zoom: float = 52.0
 @export var pitch_degrees: float = -55.0
 # Yaw the rig so the track's longer X axis runs down the portrait
 # viewport — uses the screen height for the wider track dimension.

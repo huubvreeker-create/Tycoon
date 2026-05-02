@@ -122,72 +122,225 @@ func _make_label_strip(parent: Node3D, color: Color, pos: Vector3, size: Vector3
 # Buildings
 # ---------------------------------------------------------------------------
 func _build_cafeteria(parent: Node3D, level: int) -> void:
-	# Yellow box on the LEFT of the venue, height + footprint scale w/ level.
+	# A real café: main building + covered patio + tables with parasols
+	# + signage on the front.  Sits on the LEFT (-X) side of the venue.
 	var rx := _track_rx()
-	var w := 5.0 + level * 0.25
-	var d := 4.0 + level * 0.18
-	var h := 2.4 + level * 0.18
-	var pos := Vector3(-rx - 6.0 - w * 0.3, h * 0.5, 0.0)
-	_make_box(parent, Vector3(w, h, d), pos, _CAFETERIA_COLOR.darkened(0.5))
-	# Bright sign band at top
-	_make_label_strip(parent, _CAFETERIA_COLOR, pos + Vector3(0, h * 0.5 + 0.15, d * 0.5 + 0.05), Vector3(w * 0.85, 0.25, 0.05))
-	# Decorative pavilion box
-	_make_box(parent, Vector3(w * 0.4, 0.25, d * 1.6), pos + Vector3(0, -h * 0.5 + 0.12, 0), _CAFETERIA_COLOR.darkened(0.7))
+	var w: float = 6.0 + level * 0.20
+	var d: float = 4.5 + level * 0.16
+	var h: float = 3.0 + level * 0.12
+	var building_pos := Vector3(-rx - 8.0, h * 0.5, 0.0)
+
+	# Main building.
+	_make_box(parent, Vector3(w, h, d), building_pos, _CAFETERIA_COLOR.darkened(0.55))
+
+	# Lit-up sign band on the side facing the track.
+	_make_label_strip(parent, _CAFETERIA_COLOR,
+		building_pos + Vector3(w * 0.5 + 0.05, h * 0.25, 0),
+		Vector3(0.06, 0.40, d * 0.85))
+
+	# Patio in front of the building (between building and track).
+	var patio_d: float = 3.0 + level * 0.10
+	var patio_pos: Vector3 = building_pos + Vector3(w * 0.5 + patio_d * 0.5, -h * 0.5 + 0.05, 0)
+	_make_box(parent, Vector3(patio_d, 0.10, d * 0.95),
+		patio_pos, _CAFETERIA_COLOR.darkened(0.7))
+
+	# Awning over the patio (flat panel on supports).
+	var awning_h: float = h * 0.85
+	_make_box(parent, Vector3(patio_d * 0.95, 0.12, d * 0.9),
+		patio_pos + Vector3(0, awning_h - 0.05, 0),
+		_CAFETERIA_COLOR)
+	# Awning support pillars (the four corners).
+	var support_h: float = awning_h - 0.05
+	var sx: float = patio_d * 0.42
+	var sz: float = d * 0.4
+	for support_offset: Vector3 in [
+		Vector3( sx, 0,  sz),
+		Vector3( sx, 0, -sz),
+		Vector3(-sx, 0,  sz),
+		Vector3(-sx, 0, -sz),
+	]:
+		_make_box(parent, Vector3(0.10, support_h, 0.10),
+			patio_pos + support_offset + Vector3(0, support_h * 0.5, 0),
+			_CAFETERIA_COLOR.darkened(0.6))
+
+	# Tables with parasols on the patio.
+	var table_count: int = clampi(2 + level / 4, 2, 5)
+	for i in range(table_count):
+		var t_norm: float = (float(i) + 0.5) / float(table_count)
+		var tz: float = (t_norm - 0.5) * d * 0.75
+		var table_floor: Vector3 = patio_pos + Vector3(0, 0.10, tz)
+		# Table top
+		_make_box(parent, Vector3(0.7, 0.06, 0.7),
+			table_floor + Vector3(0, 0.45, 0),
+			Color(0.85, 0.85, 0.90))
+		# Pole
+		_make_box(parent, Vector3(0.06, 1.5, 0.06),
+			table_floor + Vector3(0, 0.75, 0),
+			Color(0.40, 0.40, 0.45))
+		# Parasol (flat slab)
+		_make_box(parent, Vector3(1.10, 0.08, 1.10),
+			table_floor + Vector3(0, 1.55, 0),
+			_CAFETERIA_COLOR.lightened(0.15))
 
 
 func _build_pit_lane(parent: Node3D, level: int) -> void:
-	# Long thin garage along the RIGHT of the track. Number of garage bays
-	# grows with level; bay material is metallic.
+	# A real pit complex: pit lane (asphalt) parallel to the track's long
+	# straight, separated by a pit wall, with a row of garages on the
+	# outside and short asphalt connectors merging the pit lane back into
+	# the main track at each end. Scales with level.
 	var rx := _track_rx()
 	var rz := _track_rz()
-	var bays := mini(level, 8)
-	var bay_w := 2.0
-	var total_w := bays * bay_w + 0.4
-	var d := 3.0 + level * 0.10
-	var h := 2.2 + level * 0.05
-	var center_x := rx + 5.5 + d * 0.5
+	var asphalt_color := Color(0.10, 0.11, 0.14)
+
+	# Pit straight runs along the long axis (X) on the +Z side.
+	var pit_lane_width: float = 2.6 + level * 0.06
+	var pit_lane_length: float = rx * 1.2
+	var pit_lane_z: float = rz + 4.0 + pit_lane_width * 0.5
+	# Asphalt
+	_make_box(parent, Vector3(pit_lane_length, 0.08, pit_lane_width),
+		Vector3(0, 0.04, pit_lane_z),
+		asphalt_color)
+	# Centre line markings (small white dashes along the pit lane).
+	var dash_count: int = 8
+	for i in range(dash_count):
+		var u: float = (float(i) + 0.5) / float(dash_count)
+		var dx: float = (u - 0.5) * pit_lane_length * 0.92
+		_make_box(parent, Vector3(0.45, 0.10, 0.10),
+			Vector3(dx, 0.08, pit_lane_z),
+			Color(0.85, 0.85, 0.90))
+
+	# Pit wall — between the pit lane and the main track.
+	var wall_h: float = 0.55
+	var wall_z: float = pit_lane_z - pit_lane_width * 0.5 - 0.15
+	_make_box(parent, Vector3(pit_lane_length * 0.96, wall_h, 0.18),
+		Vector3(0, wall_h * 0.5, wall_z),
+		Color(0.92, 0.92, 0.95))
+	# Wall base accent (cyan stripe along the top of the wall).
+	_make_label_strip(parent, _PIT_LANE_COLOR,
+		Vector3(0, wall_h + 0.05, wall_z),
+		Vector3(pit_lane_length * 0.96, 0.10, 0.20))
+
+	# Garage row on the OUTSIDE of the pit lane (further from the track).
+	var bays: int = clampi(level, 1, 8)
+	var bay_w: float = 2.6
+	var bay_d: float = 3.4 + level * 0.05
+	var bay_h: float = 2.6 + level * 0.05
+	var total_garages_length: float = bays * bay_w
+	var garage_z: float = pit_lane_z + pit_lane_width * 0.5 + bay_d * 0.5 + 0.15
 	for i in range(bays):
-		var x := center_x
-		var z := -total_w * 0.5 + i * bay_w + bay_w * 0.5
-		_make_box(parent, Vector3(d, h, bay_w * 0.95), Vector3(x, h * 0.5, z), _PIT_LANE_COLOR.darkened(0.65))
-		# Door inset (lighter)
-		_make_label_strip(parent, _PIT_LANE_COLOR, Vector3(x - d * 0.5 - 0.02, h * 0.4, z), Vector3(0.04, h * 0.7, bay_w * 0.7))
-	# Roof line capping all bays
-	_make_box(parent, Vector3(d + 0.4, 0.25, total_w + 0.2), Vector3(center_x, h + 0.12, 0), _PIT_LANE_COLOR.darkened(0.4))
-	# Suppress unused variable warning
-	if rz > 0.0:
-		pass
+		var bay_x: float = -total_garages_length * 0.5 + i * bay_w + bay_w * 0.5
+		# Garage box
+		_make_box(parent, Vector3(bay_w * 0.95, bay_h, bay_d),
+			Vector3(bay_x, bay_h * 0.5, garage_z),
+			_PIT_LANE_COLOR.darkened(0.65))
+		# Open door front (lighter slab on the side facing the pit lane)
+		_make_label_strip(parent, _PIT_LANE_COLOR,
+			Vector3(bay_x, bay_h * 0.4, garage_z - bay_d * 0.5 - 0.01),
+			Vector3(bay_w * 0.78, bay_h * 0.75, 0.05))
+		# Bay number plate above the door
+		_make_label_strip(parent, _PIT_LANE_COLOR.lightened(0.2),
+			Vector3(bay_x, bay_h + 0.10, garage_z - bay_d * 0.5 - 0.01),
+			Vector3(bay_w * 0.5, 0.18, 0.04))
+	# Garage roof spanning the bays
+	_make_box(parent, Vector3(total_garages_length + 0.3, 0.20, bay_d + 0.4),
+		Vector3(0, bay_h + 0.10, garage_z),
+		_PIT_LANE_COLOR.darkened(0.35))
+
+	# Connector slips at the two ends of the pit straight, visually
+	# merging the pit lane back into the main track.
+	var connector_length: float = 5.0
+	var connector_width: float = pit_lane_width * 0.85
+	# Direction is rotated ~30° so it visibly bends toward the track.
+	for sign_x: int in [-1, 1]:
+		var connector_pos := Vector3(
+			float(sign_x) * (pit_lane_length * 0.5 + connector_length * 0.45),
+			0.04,
+			pit_lane_z * 0.55)
+		var connector := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(connector_length, 0.08, connector_width)
+		connector.mesh = bm
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = asphalt_color
+		mat.roughness = 0.85
+		connector.material_override = mat
+		connector.position = connector_pos
+		# Rotate to angle toward the track (around Y axis).
+		connector.rotation.y = deg_to_rad(28.0 * float(sign_x))
+		parent.add_child(connector)
 
 
 func _build_lounge(parent: Node3D, level: int) -> void:
-	# Tall purple tower at the FRONT (-Z) of the venue.
+	# Multi-storey hospitality block with glass strips on three sides and
+	# a roof terrace. Scales taller with level.
 	var rz := _track_rz()
-	var w := 4.5 + level * 0.20
-	var d := 4.5 + level * 0.20
-	var h := 4.0 + level * 0.55  # grows tall
-	var pos := Vector3(0.0, h * 0.5, -rz - 6.5 - d * 0.3)
+	var w: float = 5.0 + level * 0.18
+	var d: float = 5.0 + level * 0.18
+	var floors: int = clampi(2 + level / 3, 2, 6)
+	var floor_h: float = 1.4
+	var h: float = floor_h * float(floors) + 0.6
+	var pos := Vector3(0.0, h * 0.5, -rz - 7.0 - d * 0.3)
+
+	# Main tower
 	_make_box(parent, Vector3(w, h, d), pos, _LOUNGE_COLOR.darkened(0.55))
-	# Glowing window strips up the side
-	for i in range(maxi(2, level / 2)):
-		var y := -h * 0.5 + 1.0 + i * 0.9
-		if y >= h * 0.5 - 0.4:
-			break
-		_make_label_strip(parent, _LOUNGE_COLOR.lightened(0.2), pos + Vector3(0, y, d * 0.5 + 0.05), Vector3(w * 0.7, 0.25, 0.05))
-	# Crown beacon at the very top
-	_make_label_strip(parent, _LOUNGE_COLOR, pos + Vector3(0, h * 0.5 + 0.2, 0), Vector3(0.6, 0.4, 0.6))
+
+	# Glass strips on each floor (front + both sides).
+	var glass_color := _LOUNGE_COLOR.lightened(0.30)
+	for f in range(floors):
+		var y_local: float = -h * 0.5 + 0.4 + (float(f) + 0.5) * floor_h
+		# Front (facing +Z, toward track)
+		_make_label_strip(parent, glass_color,
+			pos + Vector3(0, y_local, d * 0.5 + 0.03),
+			Vector3(w * 0.78, 0.55, 0.06))
+		# Right side (+X)
+		_make_label_strip(parent, glass_color,
+			pos + Vector3(w * 0.5 + 0.03, y_local, 0),
+			Vector3(0.06, 0.55, d * 0.78))
+		# Left side (-X)
+		_make_label_strip(parent, glass_color,
+			pos + Vector3(-w * 0.5 - 0.03, y_local, 0),
+			Vector3(0.06, 0.55, d * 0.78))
+
+	# Roof terrace — a slightly inset platform with a railing.
+	var terrace_y: float = pos.y + h * 0.5 + 0.06
+	_make_box(parent, Vector3(w * 0.85, 0.12, d * 0.85),
+		Vector3(pos.x, terrace_y, pos.z),
+		_LOUNGE_COLOR.darkened(0.3))
+	# Railing — four thin walls around the terrace.
+	var rail_h: float = 0.45
+	var ry: float = terrace_y + rail_h * 0.5 + 0.06
+	_make_box(parent, Vector3(w * 0.85, rail_h, 0.05),
+		Vector3(pos.x, ry, pos.z + d * 0.42), _LOUNGE_COLOR.lightened(0.2))
+	_make_box(parent, Vector3(w * 0.85, rail_h, 0.05),
+		Vector3(pos.x, ry, pos.z - d * 0.42), _LOUNGE_COLOR.lightened(0.2))
+	_make_box(parent, Vector3(0.05, rail_h, d * 0.85),
+		Vector3(pos.x + w * 0.42, ry, pos.z), _LOUNGE_COLOR.lightened(0.2))
+	_make_box(parent, Vector3(0.05, rail_h, d * 0.85),
+		Vector3(pos.x - w * 0.42, ry, pos.z), _LOUNGE_COLOR.lightened(0.2))
+
+	# VIP beacon on top of the terrace.
+	_make_label_strip(parent, _LOUNGE_COLOR,
+		Vector3(pos.x, ry + rail_h, pos.z),
+		Vector3(0.5, 0.5, 0.5))
 
 
 func _build_merch_shop(parent: Node3D, level: int) -> void:
-	# Green kiosk at the BACK (+Z) of the venue.
-	var rz := _track_rz()
-	var w := 3.5 + level * 0.18
-	var d := 3.0 + level * 0.14
-	var h := 2.2 + level * 0.10
-	var pos := Vector3(0.0, h * 0.5, rz + 5.5 + d * 0.3)
+	# Green kiosk at the +X end of the venue (other end from the
+	# cafeteria — we leave +Z free for the pit complex).
+	var rx := _track_rx()
+	var w: float = 3.5 + level * 0.18
+	var d: float = 3.0 + level * 0.14
+	var h: float = 2.2 + level * 0.10
+	var pos := Vector3(rx + 5.5 + w * 0.3, h * 0.5, 0.0)
 	_make_box(parent, Vector3(w, h, d), pos, _MERCH_COLOR.darkened(0.55))
-	_make_label_strip(parent, _MERCH_COLOR, pos + Vector3(0, h * 0.5 + 0.15, -d * 0.5 - 0.05), Vector3(w * 0.85, 0.25, 0.05))
-	# Awning
-	_make_box(parent, Vector3(w * 1.15, 0.08, d * 0.4), pos + Vector3(0, h * 0.55, -d * 0.5 - d * 0.2), _MERCH_COLOR)
+	# Sign band on the side facing the track.
+	_make_label_strip(parent, _MERCH_COLOR,
+		pos + Vector3(-w * 0.5 - 0.05, h * 0.4, 0),
+		Vector3(0.06, 0.30, d * 0.8))
+	# Awning over the entrance (extends toward the track, -X).
+	_make_box(parent, Vector3(w * 0.4, 0.08, d * 1.15),
+		pos + Vector3(-w * 0.5 - w * 0.2, h * 0.55, 0),
+		_MERCH_COLOR)
 
 
 func _build_sponsor_boards(parent: Node3D, level: int) -> void:
