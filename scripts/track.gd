@@ -53,153 +53,165 @@ const TIER_RACE_DURATION := {
 	1: 6.0, 2: 7.0, 3: 8.0, 4: 9.0, 5: 10.0,
 	6: 11.0, 7: 12.0, 8: 13.0, 9: 14.5, 10: 16.0
 }
-# Track footprint (metres). Tier 1 is a backyard loop, tier 10 a full
-# F1 lap — every tier adds clear visible size.
+# --- Fixed venue geometry (unchanged across tiers) ---------------------------
+# A real F1 circuit has an iconic main straight that doesn't change
+# between seasons — the pit lane connects to it, the start-finish
+# tower sits on it, the grandstands face it. We use the same idea:
+# the start/finish straight on the +Z side is FIXED across all tiers.
+# Only the south loop (the rest of the circuit) grows and gains
+# corners as the player tiers up.
+const STRAIGHT_HALF: float = 8.0       # half-length of main straight (= 16 m total)
+const STRAIGHT_Z: float = 7.0          # z-coord of the straight (north of origin)
+
+# Per-tier south LOOP. Loop endpoints on the north side are at
+# (±loop_rx, STRAIGHT_Z); loop dips south to (0, STRAIGHT_Z -
+# loop_depth) at its apex. The loop GROWS per tier — wider east-west
+# AND deeper south — so the player visibly gets a bigger circuit each
+# rollover, but the central pit straight stays put.
+const TIER_LOOP_RX := {
+	1:  8.0, 2:  9.0, 3: 10.5, 4: 12.0, 5: 14.0,
+	6: 16.0, 7: 18.5, 8: 21.0, 9: 24.0, 10: 28.0
+}
+const TIER_LOOP_DEPTH := {
+	1:  9.0, 2: 11.0, 3: 13.5, 4: 16.0, 5: 18.5,
+	6: 21.0, 7: 23.5, 8: 26.0, 9: 29.0, 10: 33.0
+}
+# Backwards-compat aliases. Both maps duplicate the loop tables —
+# TIER_TRACK_RX = horizontal half-extent (sets X-side facility
+# positioning); TIER_TRACK_RZ = south extent (sets -Z facilities).
+# The new asymmetric helpers (north_extent_z / south_extent_z) on
+# the API expose the proper north/south extents separately.
 const TIER_TRACK_RX := {
-	1: 12.0, 2: 14.0, 3: 17.0, 4: 20.0, 5: 24.0,
-	6: 28.0, 7: 32.0, 8: 36.0, 9: 42.0, 10: 50.0
+	1:  8.0, 2:  9.0, 3: 10.5, 4: 12.0, 5: 14.0,
+	6: 16.0, 7: 18.5, 8: 21.0, 9: 24.0, 10: 28.0
 }
 const TIER_TRACK_RZ := {
-	1: 7.0, 2: 8.0, 3: 10.0, 4: 12.0, 5: 14.0,
-	6: 16.0, 7: 19.0, 8: 22.0, 9: 25.0, 10: 30.0
+	1:  9.0, 2: 11.0, 3: 13.5, 4: 16.0, 5: 18.5,
+	6: 21.0, 7: 23.5, 8: 26.0, 9: 29.0, 10: 33.0
 }
+
 const TIER_ASPHALT_WIDTH := {
 	1: 3.0, 2: 3.4, 3: 3.8, 4: 4.2, 5: 4.6,
 	6: 5.0, 7: 5.4, 8: 5.8, 9: 6.4, 10: 7.0
 }
-## Per-tier track LAYOUT recipes. Each tier produces a fundamentally
-## different shape (not just a scaled oval). Features:
+## Per-tier south-LOOP recipes. The base loop is a half-oval from
+## (+loop_rx, STRAIGHT_Z) curving south to (0, STRAIGHT_Z - loop_depth)
+## back to (-loop_rx, STRAIGHT_Z). Each tier layers extra features on
+## top of that base shape:
 ##
 ##   chicanes: array of {start, end, amp, lobes}
-##     A perpendicular sin-wave displacement of `lobes` half-cycles
-##     across the [start, end] arc. Pushes alternately inward and
-##     outward, creating left-right wiggles ("S-bends" / chicanes).
+##     A perpendicular sin-wave displacement of `lobes` cycles across
+##     the loop arc range [start, end], where ψ ∈ [0, π] (ψ=0 at the
+##     east end of the straight, ψ=π/2 at the south apex, ψ=π at the
+##     west end). Creates left-right S-bends.
 ##   kinks: array of {center, half_width, indent}
-##     Smooth INWARD pull centred at angle `center`, dropping off over
-##     `half_width` radians on each side. Models a hairpin-style
-##     detour into the infield.
-##   taper: optional float — base oval is multiplied by
-##     (1 + taper * cos(t)), squashing the east end if positive or the
-##     west if negative. Default 0.
-##   y_taper: optional float — same idea but multiplies along Z so the
-##     north or south end gets squashed (egg shape). Default 0.
+##     Smooth INWARD pull centred at loop angle ψ_center, dropping off
+##     over `half_width` radians on each side. Adds an extra "infield"
+##     corner without a full loop-back.
+##
+## Per the design: tier 1 = clean half-oval (no extra corners), each
+## subsequent tier adds 1-2 chicanes/kinks so the south loop gains
+## complexity while the north straight stays identical across all tiers.
 const TIER_LAYOUT := {
-	# Tier 1 — pure backyard oval.
-	1: { "chicanes": [], "kinks": [], "taper": 0.0, "y_taper": 0.0 },
-	# Tier 2 — first chicane on the south straight (between cafeteria
-	# and merch shop) — a single S-bend.
+	# Tier 1 — clean half-oval loop, no extra corners.
+	1: { "chicanes": [], "kinks": [] },
+	# Tier 2 — adds a single chicane near the south apex.
 	2: {
 		"chicanes": [
-			{"start": 3.85, "end": 5.55, "amp": 1.4, "lobes": 1},
+			{"start": 0.40 * PI, "end": 0.60 * PI, "amp": 1.4, "lobes": 1},
 		],
-		"kinks": [], "taper": 0.0, "y_taper": 0.0
+		"kinks": []
 	},
-	# Tier 3 — egg shape (north narrows) plus a north-side kink so the
-	# track really doesn't read as an oval anymore.
+	# Tier 3 — south-apex chicane + east-side kink (extra entry corner).
 	3: {
 		"chicanes": [
-			{"start": 3.85, "end": 5.55, "amp": 1.6, "lobes": 1},
+			{"start": 0.38 * PI, "end": 0.62 * PI, "amp": 1.6, "lobes": 1},
 		],
 		"kinks": [
-			{"center": PI * 0.5, "half_width": 0.55, "indent": 1.6},
-		],
-		"taper": 0.0, "y_taper": -0.18
+			{"center": 0.18 * PI, "half_width": 0.18 * PI, "indent": 1.4},
+		]
 	},
-	# Tier 4 — double chicane on the south + a small east-side kink
-	# (early infield "hairpin" feel without a full loop-back).
+	# Tier 4 — adds a west-side kink (mirror corner on exit).
 	4: {
 		"chicanes": [
-			{"start": 3.55, "end": 4.70, "amp": 1.8, "lobes": 1},
-			{"start": 4.85, "end": 5.95, "amp": 1.8, "lobes": 1},
+			{"start": 0.38 * PI, "end": 0.62 * PI, "amp": 1.8, "lobes": 1},
 		],
 		"kinks": [
-			{"center": 0.0, "half_width": 0.50, "indent": 2.0},
-		],
-		"taper": 0.0, "y_taper": 0.0
+			{"center": 0.18 * PI, "half_width": 0.18 * PI, "indent": 1.6},
+			{"center": 0.82 * PI, "half_width": 0.18 * PI, "indent": 1.6},
+		]
 	},
-	# Tier 5 — south double chicane + north chicane + east kink.
+	# Tier 5 — wider south chicane gains a second lobe (proper S-S).
 	5: {
 		"chicanes": [
-			{"start": 3.55, "end": 4.70, "amp": 2.0, "lobes": 1},
-			{"start": 4.85, "end": 5.95, "amp": 2.0, "lobes": 1},
-			{"start": 0.55, "end": 1.65, "amp": 1.6, "lobes": 1},
+			{"start": 0.30 * PI, "end": 0.70 * PI, "amp": 2.0, "lobes": 2},
 		],
 		"kinks": [
-			{"center": 0.0, "half_width": 0.55, "indent": 2.4},
-		],
-		"taper": 0.10, "y_taper": 0.0
+			{"center": 0.18 * PI, "half_width": 0.18 * PI, "indent": 1.8},
+			{"center": 0.82 * PI, "half_width": 0.18 * PI, "indent": 1.8},
+		]
 	},
-	# Tier 6 — three chicanes spaced around the lap + west-side kink.
-	# Track loses any oval feel.
+	# Tier 6 — adds a SECOND chicane between the entry kink and apex.
 	6: {
 		"chicanes": [
-			{"start": 0.45, "end": 1.65, "amp": 2.2, "lobes": 1},
-			{"start": 2.10, "end": 3.05, "amp": 1.8, "lobes": 1},
-			{"start": 3.85, "end": 5.55, "amp": 2.4, "lobes": 1},
+			{"start": 0.30 * PI, "end": 0.50 * PI, "amp": 2.2, "lobes": 1},
+			{"start": 0.55 * PI, "end": 0.75 * PI, "amp": 2.2, "lobes": 1},
 		],
 		"kinks": [
-			{"center": PI, "half_width": 0.55, "indent": 2.6},
-		],
-		"taper": -0.08, "y_taper": -0.10
+			{"center": 0.15 * PI, "half_width": 0.15 * PI, "indent": 2.0},
+			{"center": 0.85 * PI, "half_width": 0.15 * PI, "indent": 2.0},
+		]
 	},
-	# Tier 7 — heavier chicanes with TWO lobes (longer S-section) +
-	# both east AND west kinks.
+	# Tier 7 — adds a third chicane (now 3 distinct S-sections).
 	7: {
 		"chicanes": [
-			{"start": 0.40, "end": 1.80, "amp": 2.6, "lobes": 2},
-			{"start": 3.55, "end": 5.85, "amp": 2.8, "lobes": 2},
+			{"start": 0.22 * PI, "end": 0.40 * PI, "amp": 2.4, "lobes": 1},
+			{"start": 0.42 * PI, "end": 0.58 * PI, "amp": 2.4, "lobes": 1},
+			{"start": 0.60 * PI, "end": 0.78 * PI, "amp": 2.4, "lobes": 1},
 		],
 		"kinks": [
-			{"center": 0.0, "half_width": 0.60, "indent": 2.6},
-			{"center": PI, "half_width": 0.60, "indent": 2.6},
-		],
-		"taper": 0.0, "y_taper": 0.0
+			{"center": 0.13 * PI, "half_width": 0.13 * PI, "indent": 2.2},
+			{"center": 0.87 * PI, "half_width": 0.13 * PI, "indent": 2.2},
+		]
 	},
-	# Tier 8 — wide complex with multiple chicane sections + asymmetric
-	# kinks.
+	# Tier 8 — bigger amplitudes on the chicanes, kinks bite deeper.
 	8: {
 		"chicanes": [
-			{"start": 0.30, "end": 1.30, "amp": 3.0, "lobes": 1},
-			{"start": 1.60, "end": 2.85, "amp": 2.6, "lobes": 2},
-			{"start": 3.50, "end": 4.60, "amp": 3.2, "lobes": 1},
-			{"start": 4.85, "end": 5.95, "amp": 2.6, "lobes": 1},
+			{"start": 0.20 * PI, "end": 0.40 * PI, "amp": 2.8, "lobes": 1},
+			{"start": 0.42 * PI, "end": 0.58 * PI, "amp": 2.6, "lobes": 2},
+			{"start": 0.60 * PI, "end": 0.80 * PI, "amp": 2.8, "lobes": 1},
 		],
 		"kinks": [
-			{"center": 0.0, "half_width": 0.50, "indent": 3.0},
-			{"center": PI, "half_width": 0.55, "indent": 2.4},
-		],
-		"taper": 0.06, "y_taper": -0.06
+			{"center": 0.12 * PI, "half_width": 0.12 * PI, "indent": 2.6},
+			{"center": 0.88 * PI, "half_width": 0.12 * PI, "indent": 2.6},
+		]
 	},
-	# Tier 9 — Spa-ish: long sweeping S-curves connecting straights,
-	# multiple chicanes around the lap.
+	# Tier 9 — adds an extra mid-loop kink (3 kinks total, 3 chicanes).
 	9: {
 		"chicanes": [
-			{"start": 0.20, "end": 1.50, "amp": 3.4, "lobes": 2},
-			{"start": 1.80, "end": 2.90, "amp": 2.8, "lobes": 1},
-			{"start": 3.40, "end": 4.85, "amp": 3.6, "lobes": 2},
-			{"start": 5.05, "end": 6.05, "amp": 2.8, "lobes": 1},
+			{"start": 0.20 * PI, "end": 0.40 * PI, "amp": 3.0, "lobes": 1},
+			{"start": 0.42 * PI, "end": 0.58 * PI, "amp": 2.8, "lobes": 2},
+			{"start": 0.60 * PI, "end": 0.80 * PI, "amp": 3.0, "lobes": 1},
 		],
 		"kinks": [
-			{"center": 0.0, "half_width": 0.60, "indent": 3.2},
-			{"center": PI, "half_width": 0.60, "indent": 3.2},
-		],
-		"taper": -0.05, "y_taper": -0.05
+			{"center": 0.10 * PI, "half_width": 0.10 * PI, "indent": 2.8},
+			{"center": 0.50 * PI, "half_width": 0.10 * PI, "indent": 2.4},
+			{"center": 0.90 * PI, "half_width": 0.10 * PI, "indent": 2.8},
+		]
 	},
-	# Tier 10 — full F1: maximum complexity, every section different.
+	# Tier 10 — full F1 layout: 4 chicane sections, 3 deep kinks.
 	10: {
 		"chicanes": [
-			{"start": 0.20, "end": 1.10, "amp": 3.6, "lobes": 1},
-			{"start": 1.40, "end": 2.40, "amp": 3.2, "lobes": 2},
-			{"start": 2.65, "end": 3.20, "amp": 2.4, "lobes": 1},
-			{"start": 3.55, "end": 4.55, "amp": 4.0, "lobes": 2},
-			{"start": 4.80, "end": 5.50, "amp": 3.0, "lobes": 1},
-			{"start": 5.70, "end": 6.20, "amp": 2.4, "lobes": 1},
+			{"start": 0.16 * PI, "end": 0.32 * PI, "amp": 3.2, "lobes": 1},
+			{"start": 0.34 * PI, "end": 0.48 * PI, "amp": 3.0, "lobes": 1},
+			{"start": 0.52 * PI, "end": 0.66 * PI, "amp": 3.0, "lobes": 1},
+			{"start": 0.68 * PI, "end": 0.84 * PI, "amp": 3.2, "lobes": 2},
 		],
 		"kinks": [
-			{"center": 0.0, "half_width": 0.55, "indent": 3.6},
-			{"center": PI, "half_width": 0.55, "indent": 3.6},
-		],
-		"taper": 0.04, "y_taper": -0.04
+			{"center": 0.09 * PI, "half_width": 0.09 * PI, "indent": 3.2},
+			{"center": 0.50 * PI, "half_width": 0.10 * PI, "indent": 2.8},
+			{"center": 0.91 * PI, "half_width": 0.09 * PI, "indent": 3.2},
+		]
 	},
 }
 
@@ -385,10 +397,31 @@ func levels_in_current_kart_tier() -> int:
 # not on every per-level upgrade. The "current_*" wrappers exist so
 # callers don't have to reach into the tier tables themselves.
 func current_rx() -> float:
-	return float(TIER_TRACK_RX[track_tier()])
+	# East-west half-extent of the loop (also of the full track,
+	# since the north straight is centred at x=0 and the loop fans
+	# out to ±loop_rx on each side).
+	return float(TIER_LOOP_RX[track_tier()])
 
 func current_rz() -> float:
-	return float(TIER_TRACK_RZ[track_tier()])
+	# Total Z extent: from STRAIGHT_Z (north) down to STRAIGHT_Z -
+	# loop_depth (south). For backwards-compat callers that just need
+	# a "size" value, return the loop depth (south-side extent which
+	# is what most facility positioning cares about).
+	return float(TIER_LOOP_DEPTH[track_tier()])
+
+# Asymmetric Z extents — pit lane / marketing tower live on the
+# +Z side at a small offset, while plaza / grandstand / lounge sit
+# south at a much larger offset that grows per tier.
+func north_extent_z(margin: float = 0.0) -> float:
+	# Z coord of the asphalt's outer (+Z) edge along the main straight.
+	return STRAIGHT_Z + current_asphalt_width() * 0.5 + RUMBLE_INSET + margin
+
+func south_extent_z(margin: float = 0.0) -> float:
+	# ABSOLUTE distance from origin to the asphalt's outer (-Z) edge
+	# at the loop's south apex. Returned as a positive number — south-
+	# side facilities sit at z = -south_extent_z(margin).
+	return float(TIER_LOOP_DEPTH[track_tier()]) - STRAIGHT_Z \
+		+ current_asphalt_width() * 0.5 + current_wave_amp() + RUMBLE_INSET + margin
 
 func current_asphalt_width() -> float:
 	return float(TIER_ASPHALT_WIDTH[track_tier()])
@@ -565,73 +598,118 @@ func _make_layout_curve(tier: int) -> Curve3D:
 	return curve
 
 
-# Compute a single point on the tier's track curve. Builds on top of
-# the base oval (rx*cos(t), rz*sin(t)) with optional asymmetric taper
-# along X (taper) and Z (y_taper), then layers chicane S-bends and
-# inward kinks per the layout recipe.
+# Public wrapper — sample the CURRENT tier's track centreline at the
+# given parameter. The parameter t ∈ [0, TAU) is split into:
+#   t ∈ [0, π]: south LOOP (varies per tier)
+#   t ∈ [π, TAU]: north STRAIGHT (FIXED across all tiers)
+func track_curve_point(t: float) -> Vector3:
+	return _layout_curve_point(t, track_tier())
+
+
+# Public wrapper — outward-pointing unit normal of the BASE half-oval
+# at parameter t. Used for offsetting parallel structures from the
+# track's smooth central line rather than from the wobbly racing
+# line, so the parallel road stays clean.
+func oval_normal(t: float) -> Vector2:
+	var loop_rx: float = float(TIER_LOOP_RX[track_tier()])
+	var loop_depth: float = float(TIER_LOOP_DEPTH[track_tier()])
+	if t >= 0.0 and t <= PI:
+		# South loop — outward normal of the half-ellipse below z=STRAIGHT_Z.
+		var psi: float = t  # ψ goes 0..π across the loop
+		# Loop point is at (loop_rx * cos(ψ), STRAIGHT_Z - loop_depth * sin(ψ))
+		# but flipped so ψ=0 → east end, ψ=π → west end.
+		# Outward normal: (loop_depth * cos(ψ), -loop_rx * sin(ψ))
+		var n := Vector2(loop_depth * cos(psi), -loop_rx * sin(psi))
+		if n.length() < 0.001:
+			return Vector2(1.0, 0.0)
+		return n.normalized()
+	else:
+		# North straight — outward normal points +Z everywhere.
+		return Vector2(0.0, 1.0)
+
+
+# Public wrapper — the smooth IDEAL CENTRELINE point at parameter t
+# (no chicanes, no kinks applied). Used as the reference for
+# parallel offsets (pit lane).
+func oval_point(t: float) -> Vector3:
+	var loop_rx: float = float(TIER_LOOP_RX[track_tier()])
+	var loop_depth: float = float(TIER_LOOP_DEPTH[track_tier()])
+	if t >= 0.0 and t <= PI:
+		# South loop — half-ellipse from east end (+loop_rx, STRAIGHT_Z)
+		# at ψ=0 going through south apex (0, STRAIGHT_Z - loop_depth)
+		# at ψ=π/2 to west end (-loop_rx, STRAIGHT_Z) at ψ=π.
+		var psi: float = t
+		return Vector3(loop_rx * cos(psi), 0.0,
+			STRAIGHT_Z - loop_depth * sin(psi))
+	else:
+		# North straight: linear from west end (-loop_rx, STRAIGHT_Z)
+		# at t=π back to east end (+loop_rx, STRAIGHT_Z) at t=TAU.
+		var frac: float = (t - PI) / PI  # 0..1
+		var x: float = lerpf(-loop_rx, loop_rx, frac)
+		return Vector3(x, 0.0, STRAIGHT_Z)
+
+
+# Compute a single point on the tier's track curve. The track is
+# composed of a FIXED north straight (t ∈ [π, TAU]) plus a per-tier
+# south loop (t ∈ [0, π]) with chicane / kink features.
+#
+# Chicanes and kinks ONLY apply to the loop section — the north
+# straight stays perfectly straight on every tier so the pit lane,
+# pit wall, garages and start-finish line keep a stable home across
+# all upgrades.
 func _layout_curve_point(t: float, tier: int) -> Vector3:
-	var rx: float = float(TIER_TRACK_RX[tier])
-	var rz: float = float(TIER_TRACK_RZ[tier])
-	var layout: Dictionary = TIER_LAYOUT[tier]
-	var taper: float = float(layout.get("taper", 0.0))
-	var y_taper: float = float(layout.get("y_taper", 0.0))
+	# Wrap t into [0, TAU).
+	t = fposmod(t, TAU)
 
-	# Base oval with optional axis tapers — taper>0 pulls the EAST side
-	# in, taper<0 pulls the WEST side in. Same for y_taper along Z.
-	var rx_t: float = rx * (1.0 + taper * cos(t))
-	var rz_t: float = rz * (1.0 + y_taper * sin(t))
-	var base_x: float = cos(t) * rx_t
-	var base_z: float = sin(t) * rz_t
+	if t > PI:
+		# North straight — pure linear interpolation, no features.
+		var loop_rx: float = float(TIER_LOOP_RX[tier])
+		var frac: float = (t - PI) / PI
+		var x: float = lerpf(-loop_rx, loop_rx, frac)
+		return Vector3(x, 0.0, STRAIGHT_Z)
 
-	# Outward normal at this oval point (radial direction).
-	var nrm := Vector2(rz_t * cos(t), rx_t * sin(t))
+	# South loop — base half-ellipse + chicanes + kinks.
+	var loop_rx_b: float = float(TIER_LOOP_RX[tier])
+	var loop_depth: float = float(TIER_LOOP_DEPTH[tier])
+	var psi: float = t
+	var base_x: float = loop_rx_b * cos(psi)
+	var base_z: float = STRAIGHT_Z - loop_depth * sin(psi)
+	# Outward normal of the half-ellipse (points away from oval centre).
+	var nrm := Vector2(loop_depth * cos(psi), -loop_rx_b * sin(psi))
 	if nrm.length() < 0.001:
 		nrm = Vector2(1.0, 0.0)
 	nrm = nrm.normalized()
 
+	var layout: Dictionary = TIER_LAYOUT[tier]
 	var dx: float = 0.0
 	var dz: float = 0.0
 
-	# Chicanes — alternating sin-wave perpendicular displacements over
-	# specific arc windows.
+	# Chicanes — perpendicular sin-wave wiggles in [start, end] ⊆ [0,π].
 	var chicanes: Array = layout.get("chicanes", [])
 	for c: Dictionary in chicanes:
 		var c_start: float = float(c.start)
 		var c_end: float = float(c.end)
-		if t < c_start or t > c_end:
+		if psi < c_start or psi > c_end:
 			continue
-		var local_t: float = (t - c_start) / (c_end - c_start)  # 0..1
+		var local_t: float = (psi - c_start) / (c_end - c_start)
 		var lobes: int = int(c.get("lobes", 1))
-		# sin(2π * lobes * local_t) gives `lobes` full cycles → each
-		# lobe is one inward+outward swing. Multiply by an in/out
-		# fade so the chicane joins the rest of the curve smoothly.
-		var fade: float = sin(local_t * PI)  # 0 at edges, 1 at midpoint
+		var fade: float = sin(local_t * PI)        # smooth join at edges
 		var wave: float = sin(local_t * TAU * float(lobes))
 		var amp: float = float(c.amp)
 		var displacement: float = wave * fade * amp
 		dx += nrm.x * displacement
 		dz += nrm.y * displacement
 
-	# Kinks — smooth INWARD-only pull centred at a specific angle.
-	# Useful for single-corner detours that look like hairpins from
-	# above without breaking the closed-loop topology.
+	# Kinks — smooth INWARD pull centred at ψ_center over ±half_width.
 	var kinks: Array = layout.get("kinks", [])
 	for k: Dictionary in kinks:
 		var k_center: float = float(k.center)
 		var k_hw: float = float(k.half_width)
 		var k_indent: float = float(k.indent)
-		# Wrap the angular distance across the [0, TAU) seam.
-		var raw_dt: float = t - k_center
-		while raw_dt > PI:
-			raw_dt -= TAU
-		while raw_dt < -PI:
-			raw_dt += TAU
-		var dt: float = absf(raw_dt)
-		if dt > k_hw:
+		var dt_k: float = absf(psi - k_center)
+		if dt_k > k_hw:
 			continue
-		# Cosine bell — smooth 1.0 at centre, 0.0 at the half-width edges.
-		var bell: float = 0.5 * (1.0 + cos(dt / k_hw * PI))
-		# Pull INWARD = subtract along the outward normal.
+		var bell: float = 0.5 * (1.0 + cos(dt_k / k_hw * PI))
 		dx -= nrm.x * k_indent * bell
 		dz -= nrm.y * k_indent * bell
 
@@ -687,8 +765,10 @@ func _build_asphalt() -> void:
 
 func _build_click_area() -> void:
 	# A flat box covering the track footprint so any click on the
-	# asphalt forwards to the track-upgrade popup. Sized generously
-	# so the rumble strip + nearby grass also count as "the track".
+	# asphalt forwards to the track-upgrade popup. Sized to the
+	# asymmetric venue: width = full east-west extent of the loop,
+	# depth = STRAIGHT_Z (north edge) to STRAIGHT_Z - loop_depth
+	# (south edge).
 	click_area = Area3D.new()
 	click_area.name = "TrackClick"
 	click_area.collision_layer = 1
@@ -699,97 +779,57 @@ func _build_click_area() -> void:
 	click_collider = CollisionShape3D.new()
 	var shape := BoxShape3D.new()
 	var t_tier: int = track_tier()
-	shape.size = Vector3(
-		TIER_TRACK_RX[t_tier] * 2.3,
-		0.4,
-		TIER_TRACK_RZ[t_tier] * 2.3
-	)
+	var loop_rx: float = float(TIER_LOOP_RX[t_tier])
+	var loop_depth: float = float(TIER_LOOP_DEPTH[t_tier])
+	shape.size = Vector3(loop_rx * 2.3, 0.4, loop_depth * 1.15)
 	click_collider.shape = shape
-	click_collider.position = Vector3(0, 0.05, 0)
+	# Centred between the north straight (z=STRAIGHT_Z) and the south
+	# loop apex (z=STRAIGHT_Z - loop_depth) — i.e. at z = STRAIGHT_Z -
+	# loop_depth/2.
+	click_collider.position = Vector3(0, 0.05, STRAIGHT_Z - loop_depth * 0.5)
 	click_area.add_child(click_collider)
 
 
-func _refresh_track_geometry() -> void:
-	# Lightweight in-place rebuild of the path curve + CSG polygon
-	# widths so a tier rollover swaps the layout without tearing down
-	# the nodes (and re-parenting the karts).
-	if path == null or asphalt_csg == null or rumble_csg == null:
-		return
-	var rx: float = current_rx()
-	var rz: float = current_rz()
-	path.curve = _make_layout_curve(track_tier())
-	# Asphalt + rumble polygon widths.
-	var w: float = current_asphalt_width()
-	asphalt_csg.polygon = PackedVector2Array([
-		Vector2(-w * 0.5, 0.04),
-		Vector2( w * 0.5, 0.04),
-		Vector2( w * 0.5, -ASPHALT_DEPTH * 0.5),
-		Vector2(-w * 0.5, -ASPHALT_DEPTH * 0.5),
-	])
-	var rumble_w: float = w + RUMBLE_INSET * 2.0
-	rumble_csg.polygon = PackedVector2Array([
-		Vector2(-rumble_w * 0.5, 0.0),
-		Vector2( rumble_w * 0.5, 0.0),
-		Vector2( rumble_w * 0.5, -ASPHALT_DEPTH * 0.6),
-		Vector2(-rumble_w * 0.5, -ASPHALT_DEPTH * 0.6),
-	])
-	# Click area + ground footprint follow the new RX.
-	if click_collider and click_collider.shape is BoxShape3D:
-		(click_collider.shape as BoxShape3D).size = Vector3(rx * 2.3, 0.4, rz * 2.3)
-	if ground and ground.mesh is PlaneMesh:
-		(ground.mesh as PlaneMesh).size = Vector2(rx * 2.4, rx * 2.4 * 0.7)
-	# Start/finish needs to reposition with the new curve.
-	if start_finish_root:
-		start_finish_root.queue_free()
-	_build_start_finish()
-
-
 func _build_start_finish() -> void:
-	# A bright finish line painted across the asphalt at the path's
-	# first point, plus a row of starting-grid markers behind it.
+	# Start/finish line painted across the FIXED north straight in
+	# world coords — same place across every tier, like a real F1
+	# circuit's iconic start gantry. Cars travel west→east on the
+	# straight (parameter t increases through [π, TAU] which maps x
+	# from -loop_rx to +loop_rx).
 	if path == null or path.curve == null or path.curve.point_count < 2:
 		return
 	start_finish_root = Node3D.new()
 	start_finish_root.name = "StartFinish"
 	add_child(start_finish_root)
 
-	var curve := path.curve
-	var start_pos: Vector3 = curve.get_point_position(0)
-	var next_pos: Vector3 = curve.get_point_position(1)
-	var tangent: Vector3 = (next_pos - start_pos).normalized()
-	# atan2(-tz, tx) makes a box's local +X axis align with `tangent`.
-	# So size.x runs ALONG the tangent (thin line direction) and size.z
-	# runs perpendicular to it (across the track width).
-	var rot_y: float = atan2(-tangent.z, tangent.x)
 	var t_tier: int = track_tier()
 	var w: float = TIER_ASPHALT_WIDTH[t_tier]
+	# Centre of the fixed straight: x=0, z=STRAIGHT_Z. Tangent points
+	# +X (east, racing direction). Across-track axis is ±Z.
+	var line_centre: Vector3 = Vector3(0.0, 0.0, STRAIGHT_Z)
+	var tangent: Vector3 = Vector3(1.0, 0.0, 0.0)
+	# perp_south points -Z, into the loop.
+	var perp_south: Vector3 = Vector3(0.0, 0.0, -1.0)
+	# perp_north points +Z, toward the pit lane / outside.
+	var perp_north: Vector3 = Vector3(0.0, 0.0, 1.0)
 
-	# Outward perpendicular (used for podium) and inward (used for grid
-	# markers + checker offsets). Track is parametrised CCW.
-	var perp_out: Vector3 = Vector3(tangent.z, 0, -tangent.x).normalized()
-	var perp_grid: Vector3 = -perp_out
-
-	# Checkered finish line — two rows of alternating black / white
-	# squares spanning the asphalt width, painted across the start of
-	# the lap. Reads as a real F1 chequered finish line from above.
+	# Checkered finish line — two rows of alternating black/white
+	# squares spanning the asphalt width.
 	var checker_count: int = 8
-	var checker_total_w: float = w * 0.95           # span across asphalt
+	var checker_total_w: float = w * 0.95
 	var checker_w: float = checker_total_w / float(checker_count)
-	var checker_l: float = 0.55                     # length along tangent
+	var checker_l: float = 0.55
 	var rows: int = 2
-	var row_gap: float = 0.0
 	for row in range(rows):
 		var along_offset: float = -checker_l * float(rows) * 0.5 \
 			+ (float(row) + 0.5) * checker_l
 		for i in range(checker_count):
-			# Alternate so neighbouring squares (both across and along)
-			# differ — gives the proper checkerboard pattern.
 			var is_white: bool = ((i + row) % 2 == 0)
 			var across_offset: float = -checker_total_w * 0.5 \
 				+ (float(i) + 0.5) * checker_w
-			var c_pos: Vector3 = start_pos \
+			var c_pos: Vector3 = line_centre \
 				+ tangent * along_offset \
-				+ perp_grid * across_offset \
+				+ perp_south * across_offset \
 				+ Vector3(0, 0.07, 0)
 			var c := MeshInstance3D.new()
 			var cbm := BoxMesh.new()
@@ -806,12 +846,10 @@ func _build_start_finish() -> void:
 				cmat.roughness = 0.9
 			c.material_override = cmat
 			c.position = c_pos
-			c.rotation.y = rot_y
 			start_finish_root.add_child(c)
-		row_gap += 0.0  # placeholder, no gap between rows
 
-	# A subtle "podium" pillar just outside the asphalt to make the
-	# start/finish location easy to spot from anywhere on the venue.
+	# Podium pillar on the inside of the straight (south side), so the
+	# start gantry doesn't conflict with the pit lane up north.
 	var podium := MeshInstance3D.new()
 	var pbm := BoxMesh.new()
 	pbm.size = Vector3(0.4, 1.6, 0.4)
@@ -822,45 +860,42 @@ func _build_start_finish() -> void:
 	pmat.emission = Color(0.96, 0.97, 1.0)
 	pmat.emission_energy_multiplier = 0.5
 	podium.material_override = pmat
-	podium.position = start_pos + perp_out * (w * 0.55 + 0.4) + Vector3(0, 0.8, 0)
+	podium.position = line_centre + perp_south * (w * 0.55 + 0.4) \
+		+ Vector3(0, 0.8, 0)
 	start_finish_root.add_child(podium)
 
-	# Starting-grid markers behind the finish line, alternating sides
-	# (real F1 staggered grid). One marker per kart-capacity slot.
-	# We sample the actual track curve at -back_distance from start so
-	# the markers track chicane wobble — they'll always sit ON the
-	# asphalt, even on a tier-10 wavy circuit.
+	# Starting-grid markers BEHIND the finish line (i.e. WEST, towards
+	# -X), alternating sides north/south of the straight centreline.
+	# The straight is perfectly straight so we can place them
+	# directly in world coords — no curve sampling needed.
 	var grid_count: int = kart_capacity()
 	var spacing: float = 1.6
-	var bake_len: float = curve.get_baked_length()
-	if bake_len > 0.1:
-		for i in range(grid_count):
-			var back_distance: float = float(i / 2 + 1) * spacing
-			var side_sign: float = -1.0 if (i % 2 == 0) else 1.0
-			# Closed curve: going BEFORE start by `back_distance` is the
-			# same as sampling at (length - back_distance) from start.
-			var sample_d: float = fposmod(bake_len - back_distance, bake_len)
-			var marker_center: Vector3 = curve.sample_baked(sample_d)
-			var ahead_d: float = fposmod(sample_d + 0.4, bake_len)
-			var ahead_pt: Vector3 = curve.sample_baked(ahead_d)
-			var local_tangent: Vector3 = (ahead_pt - marker_center).normalized()
-			# Inward perpendicular at this sample (matches perp_grid
-			# semantics — points toward the oval centre).
-			var local_perp: Vector3 = Vector3(-local_tangent.z, 0, local_tangent.x)
-			var marker_pos: Vector3 = marker_center + local_perp * (side_sign * w * 0.22)
-			var marker := MeshInstance3D.new()
-			var mbm := BoxMesh.new()
-			mbm.size = Vector3(0.6, 0.05, 0.30)
-			marker.mesh = mbm
-			var mmat := StandardMaterial3D.new()
-			mmat.albedo_color = Color(0.92, 0.92, 0.95)
-			mmat.emission_enabled = true
-			mmat.emission = Color(0.92, 0.92, 0.95)
-			mmat.emission_energy_multiplier = 0.45
-			marker.material_override = mmat
-			marker.position = marker_pos + Vector3(0, 0.06, 0)
-			marker.rotation.y = atan2(-local_tangent.z, local_tangent.x)
-			start_finish_root.add_child(marker)
+	var loop_rx: float = float(TIER_LOOP_RX[t_tier])
+	for i in range(grid_count):
+		var back_distance: float = float(i / 2 + 1) * spacing
+		var side_sign: float = -1.0 if (i % 2 == 0) else 1.0
+		var marker_x: float = -back_distance
+		# If we'd run off the west end of the straight, wrap onto the
+		# loop's west side instead — keeps grid clear at small tiers.
+		if marker_x < -loop_rx + 0.5:
+			break
+		var marker_pos: Vector3 = Vector3(marker_x, 0.06,
+			STRAIGHT_Z + side_sign * w * 0.22)
+		var marker := MeshInstance3D.new()
+		var mbm := BoxMesh.new()
+		mbm.size = Vector3(0.6, 0.05, 0.30)
+		marker.mesh = mbm
+		var mmat := StandardMaterial3D.new()
+		mmat.albedo_color = Color(0.92, 0.92, 0.95)
+		mmat.emission_enabled = true
+		mmat.emission = Color(0.92, 0.92, 0.95)
+		mmat.emission_energy_multiplier = 0.45
+		marker.material_override = mmat
+		marker.position = marker_pos
+		start_finish_root.add_child(marker)
+	# Suppress unused-variable warning for perp_north (kept for future use).
+	if perp_north.length() > 0.0:
+		pass
 
 
 func _add_kart_node(initial_spawn: bool) -> void:
