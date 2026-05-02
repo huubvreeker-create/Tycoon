@@ -395,7 +395,7 @@ func _build_ground() -> void:
 	plane.size = Vector2(size, size)
 	ground.mesh = plane
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.34, 0.62, 0.30)  # vivid sunny grass
+	mat.albedo_color = Color(0.26, 0.48, 0.22)  # natural grass
 	mat.metallic = 0.0
 	mat.roughness = 1.0
 	ground.material_override = mat

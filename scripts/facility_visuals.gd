@@ -268,32 +268,26 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 	var rz := _track_rz()
 	var asphalt_color := Color(0.42, 0.44, 0.48)
 
-	# Width grows with facility level; the lane covers the +Z arc of
-	# the oval from t_start to t_end (centered at π/2 = top of oval).
+	# Width grows with facility level. The lane is a SEPARATE parallel
+	# road at a CONSTANT distance from the track — no merging into the
+	# racing line, no offset taper. This is how every real F1 circuit
+	# works (Red Bull Ring, Spa, Silverstone): the pit lane is its own
+	# distinct road with grass in between, no visual overlap.
 	var pit_lane_width: float = 2.6 + float(level) * 0.06
-	# Maximum outward offset at the apex of the pit curve. Real F1
-	# circuits have at least ~5m of grass between the racing line and
-	# the pit wall (Red Bull Ring, Spa, etc.) — anything closer reads
-	# as "the pit is on the track". So bump APEX_GAP substantially.
 	var wave_amp: float = _track.current_wave_amp()
 	var asphalt_outer: float = _track.current_asphalt_width() * 0.5 \
 		+ wave_amp + _RUMBLE_INSET_VAL
-	var apex_gap: float = 3.5 + wave_amp * 0.5
-	var max_offset: float = asphalt_outer + pit_lane_width * 0.5 + apex_gap
-	# Arc range covers ~130° centred on the +Z apex (90°). 25°..155° is
-	# wide enough that, with our 5% merge ramps, every chicane wave-peak
-	# at every tier falls inside the FULL-OFFSET plateau (verified
-	# numerically across all 10 tiers / wave frequencies).
-	var t_start: float = deg_to_rad(25.0)
-	var t_end: float = deg_to_rad(155.0)
+	var grass_gap: float = 4.0 + wave_amp * 0.5
+	var constant_offset: float = asphalt_outer + pit_lane_width * 0.5 + grass_gap
+	# Arc covers ~110° on the +Z side of the oval (35°..145°), so the
+	# lane is a clear secondary road on the spectator-facing side.
+	var t_start: float = deg_to_rad(35.0)
+	var t_end: float = deg_to_rad(145.0)
 	var t_range: float = t_end - t_start
 	var segments: int = 64
 
-	# Build the curved Path3D for the pit lane. At each sample we offset
-	# the oval point outward by a TRAPEZOIDAL profile (smoothstep ramp
-	# in the first 5% / out the last 5%, plateau at the full max_offset
-	# in between). This keeps the lane safely outside the asphalt for
-	# 90% of the arc and only tapers at the very ends to merge cleanly.
+	# Build the curved Path3D — every sample is offset by the SAME
+	# constant_offset so the lane stays parallel to the track.
 	var pit_path := Path3D.new()
 	pit_path.name = "PitPath"
 	parent.add_child(pit_path)
@@ -306,16 +300,10 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 		var t: float = t_start + p * t_range
 		var oval_pt := Vector3(rx * cos(t), 0.0, rz * sin(t))
 		var n := Vector2(rz * cos(t), rx * sin(t)).normalized()
-		# Trapezoidal: ramps 0→1 over p∈[0,0.05], plateau at 1, ramps
-		# 1→0 over p∈[0.95,1].
-		var ramp_in: float = smoothstep(0.0, 0.05, p)
-		var ramp_out: float = 1.0 - smoothstep(0.95, 1.0, p)
-		var offset_factor: float = ramp_in * ramp_out
-		var offset_amt: float = offset_factor * max_offset
 		var center := Vector3(
-			oval_pt.x + n.x * offset_amt,
+			oval_pt.x + n.x * constant_offset,
 			0.0,
-			oval_pt.z + n.y * offset_amt)
+			oval_pt.z + n.y * constant_offset)
 		pit_curve.add_point(center)
 		pit_centers.append(center)
 		pit_normals.append(n)
@@ -491,8 +479,9 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 
 	# Click area: rough bounding box centred on the apex of the pit curve.
 	var apex: Vector3 = pit_centers[pit_centers.size() / 2]
-	var click_size := Vector3(rx * 1.6, bay_h * 1.8,
-		max_offset + bay_d + paddock_w + 4.0)
+	var total_outward: float = constant_offset + pit_lane_width * 0.5 \
+		+ bay_d + paddock_w + 2.0
+	var click_size := Vector3(rx * 1.6, bay_h * 1.8, total_outward)
 	_add_facility_click_area(parent, "pit_lane",
 		Vector3(0, bay_h * 0.5, apex.z * 0.5),
 		click_size)
@@ -506,9 +495,10 @@ func _build_lounge(parent: Node3D, level: int) -> void:
 	var floors: int = clampi(2 + level / 3, 2, 6)
 	var floor_h: float = 1.4
 	var h: float = floor_h * float(floors) + 0.6
-	# Sit BEHIND the grandstand on the -Z spectator side, with enough
-	# margin that the grandstand has room between the lounge and track.
-	const SAFETY: float = 9.0
+	# Sit BEHIND the grandstand AND the spectator concourse plaza on
+	# the -Z side. Plaza centre is at _track_outer_z(9) with a depth
+	# of 8, so the lounge front must clear _track_outer_z(14).
+	const SAFETY: float = 14.0
 	var pos := Vector3(0.0, h * 0.5, -_track_outer_z(SAFETY) - d * 0.5)
 
 	# Main tower
@@ -962,7 +952,10 @@ const _TREE_FOLIAGE  := Color(0.30, 0.65, 0.28)
 # walkway radiates from it. Placed south of the track, close enough
 # to be a natural funnel point but well clear of the asphalt.
 func _hub_position() -> Vector3:
-	return Vector3(-_track.current_rx() * 0.4, 0.0, -_track_outer_z(7.0))
+	# Centred between the grandstand back (~track_outer+4) and the
+	# lounge front (~track_outer+14) — leaves room for an 8m-deep
+	# concourse plaza without overlapping either neighbour.
+	return Vector3(0.0, 0.0, -_track_outer_z(9.0))
 
 
 func _build_ticket_booth(parent: Node3D) -> void:
@@ -994,21 +987,17 @@ func _build_ticket_booth(parent: Node3D) -> void:
 
 
 func _build_walkways(parent: Node3D) -> void:
-	# Real F1 venues have a CONCOURSE PLAZA around the spectator
-	# entrance, not random spaghetti walkways crossing the venue. So:
-	# - One big rectangular concrete plaza at the south of the track
-	#   (the spectator entrance side)
-	# - One main road from the parking lot to that plaza
-	# - One short walkway from the plaza forward to the grandstand
-	# That's it — keeps things clean. The cafeteria / merch / lounge /
-	# pit complex all already sit on grass within walking distance,
-	# we don't need to draw a path to each of them individually
-	# (would just clip through buildings).
+	# Wide concourse running the full venue width on the spectator side,
+	# with short branches to each facility entrance and a proper road
+	# out to the parking lot. This way EVERY facility visibly connects
+	# to the same network and there are no floating walkway stubs.
 	var hub: Vector3 = _hub_position()
 
-	# Main concourse plaza — wide concrete slab around the ticket booth.
-	var plaza_w: float = 18.0
-	var plaza_d: float = 9.0
+	# Plaza spans the venue width (from -X cafeteria to +X merch shop)
+	# so it touches the front of every south-side facility.
+	var plaza_w: float = _track_outer_x(0.0) * 2.0 + 6.0
+	var plaza_d: float = 8.0
+	var plaza_z: float = hub.z
 	var plaza := MeshInstance3D.new()
 	plaza.name = "Concourse"
 	var pbm := BoxMesh.new()
@@ -1018,32 +1007,61 @@ func _build_walkways(parent: Node3D) -> void:
 	pmat.albedo_color = _WALKWAY_COLOR
 	pmat.roughness = 0.85
 	plaza.material_override = pmat
-	plaza.position = Vector3(hub.x, 0.04, hub.z)
+	plaza.position = Vector3(0.0, 0.04, plaza_z)
 	parent.add_child(plaza)
 
-	# Painted edge stripe around the plaza (light accent).
+	# Light accent stripes along the front and back edges of the plaza.
 	_make_label_strip(parent, _WALKWAY_COLOR.lightened(0.4),
-		Vector3(hub.x, 0.10, hub.z + plaza_d * 0.5 + 0.05),
+		Vector3(0.0, 0.10, plaza_z + plaza_d * 0.5 + 0.05),
 		Vector3(plaza_w * 0.95, 0.06, 0.10))
-
-	# Main asphalt road from parking lot to the plaza.
-	var parking_corner := Vector3(
-		-_track_outer_x(5.0) - 8.0,
-		0.04,
-		-_track_outer_z(4.0) - 4.0)
-	_make_road(parent, hub + Vector3(-plaza_w * 0.3, 0, 0),
-		parking_corner, 3.0, _ROAD_COLOR)
+	_make_label_strip(parent, _WALKWAY_COLOR.lightened(0.4),
+		Vector3(0.0, 0.10, plaza_z - plaza_d * 0.5 - 0.05),
+		Vector3(plaza_w * 0.95, 0.06, 0.10))
 
 	# Short walkway from plaza forward to the grandstand entrance.
 	var grandstand_entrance := Vector3(0.0, 0.04, -_track_outer_z(1.5))
-	_make_road(parent, hub + Vector3(0, 0, plaza_d * 0.5),
-		grandstand_entrance, 2.4, _WALKWAY_COLOR)
+	_make_road(parent, Vector3(0.0, 0.04, plaza_z + plaza_d * 0.5),
+		grandstand_entrance, 3.0, _WALKWAY_COLOR)
 
-	# Spectator crowd on the plaza + walking toward the grandstand.
-	_add_spectators(parent, hub, 6.0, 16, 4711)
+	# Branch walkways from the back of the plaza to each south-side
+	# facility's footprint, so the whole network reads as connected.
+	# Cafeteria sits at -X side: branch goes to its patio edge.
+	var cafe_branch := Vector3(-_track_outer_x(2.0), 0.04, plaza_z - plaza_d * 0.5)
+	_make_road(parent, Vector3(-plaza_w * 0.45, 0.04, plaza_z - plaza_d * 0.5),
+		cafe_branch, 2.2, _WALKWAY_COLOR)
+	# Merch shop sits at +X side.
+	var merch_branch := Vector3(_track_outer_x(2.0), 0.04, plaza_z - plaza_d * 0.5)
+	_make_road(parent, Vector3(plaza_w * 0.45, 0.04, plaza_z - plaza_d * 0.5),
+		merch_branch, 2.2, _WALKWAY_COLOR)
+	# Lounge sits directly behind the plaza — a short stub from the
+	# plaza back-edge meets the lounge entrance.
+	var lounge_branch := Vector3(0.0, 0.04, -_track_outer_z(13.5))
+	_make_road(parent, Vector3(0.0, 0.04, plaza_z - plaza_d * 0.5),
+		lounge_branch, 2.6, _WALKWAY_COLOR)
+
+	# Asphalt road from parking lot to the plaza. Plaza west edge is
+	# at x=-plaza_w/2; the parking lot's NE corner is the natural
+	# entry point. Two axis-aligned legs joined at a clear elbow so
+	# the junction reads as a road, not a diagonal scar.
+	var plaza_west := Vector3(-plaza_w * 0.5, 0.04, plaza_z)
+	var parking_entry := Vector3(
+		-_track_outer_x(5.0),
+		0.04,
+		-_track_outer_z(4.0))
+	var elbow := Vector3(parking_entry.x, 0.04, plaza_z)
+	_make_road(parent, plaza_west, elbow, 3.5, _ROAD_COLOR)
+	_make_road(parent, elbow, parking_entry, 3.5, _ROAD_COLOR)
+
+	# Spectator crowd CLAMPED to plaza interior only. Three small
+	# clusters spread across the plaza width — none stray onto the
+	# track-side walkway or onto the rumble strip.
+	var crowd_radius: float = minf(plaza_d * 0.30, 2.4)
 	_add_spectators(parent,
-		(hub + Vector3(0, 0, plaza_d * 0.5) + grandstand_entrance) * 0.5,
-		3.5, 8, 8123)
+		Vector3(-plaza_w * 0.30, 0.0, plaza_z), crowd_radius, 6, 4711)
+	_add_spectators(parent,
+		Vector3( plaza_w * 0.30, 0.0, plaza_z), crowd_radius, 6, 4712)
+	_add_spectators(parent,
+		Vector3(0.0, 0.0, plaza_z), crowd_radius, 6, 4713)
 
 
 func _make_road(parent: Node3D, a: Vector3, b: Vector3, width: float, color: Color) -> void:
