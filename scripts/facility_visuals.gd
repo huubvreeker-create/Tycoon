@@ -198,10 +198,12 @@ func _add_facility_click_area(parent: Node3D, facility_id: String, center: Vecto
 func _build_cafeteria(parent: Node3D, level: int) -> void:
 	# A real café: main building + covered patio + tables with parasols
 	# + signage on the front.  Sits on the LEFT (-X) side of the venue.
-	var w: float = 5.0 + level * 0.18
-	var d: float = 4.5 + level * 0.16
-	var h: float = 3.0 + level * 0.12
-	var patio_d: float = 2.5 + level * 0.08
+	# Scaling deliberately gentle so a max-level café stays cafe-sized
+	# (~9 m wide, 5 m tall) instead of turning into a stadium concession.
+	var w: float = 5.0 + level * 0.04
+	var d: float = 4.5 + level * 0.03
+	var h: float = 3.0 + level * 0.02
+	var patio_d: float = 2.5 + level * 0.04
 	# The patio extends from the building toward the track. Anchor the
 	# patio's near edge at (track outer + safety) so it never clips the
 	# rumble strip — works at every tier and every facility level.
@@ -527,11 +529,12 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 
 
 func _build_lounge(parent: Node3D, level: int) -> void:
-	# Multi-storey hospitality block with glass strips on three sides and
-	# a roof terrace. Scales taller with level.
-	var w: float = 5.0 + level * 0.18
-	var d: float = 5.0 + level * 0.18
-	var floors: int = clampi(2 + level / 3, 2, 6)
+	# VIP tower: narrow footprint, grows TALL with level (more floors)
+	# rather than ballooning outward. Real F1 hospitality buildings are
+	# slender mid-rises, not stadium blocks.
+	var w: float = 5.0 + level * 0.04
+	var d: float = 5.0 + level * 0.04
+	var floors: int = clampi(2 + level / 8, 2, 14)
 	var floor_h: float = 1.4
 	var h: float = floor_h * float(floors) + 0.6
 	# Sit BEHIND the grandstand AND the spectator concourse plaza on
@@ -587,10 +590,11 @@ func _build_lounge(parent: Node3D, level: int) -> void:
 
 func _build_merch_shop(parent: Node3D, level: int) -> void:
 	# Green kiosk at the +X end of the venue (other end from the
-	# cafeteria — we leave +Z free for the pit complex).
-	var w: float = 3.5 + level * 0.18
-	var d: float = 3.0 + level * 0.14
-	var h: float = 2.2 + level * 0.10
+	# cafeteria — we leave +Z free for the pit complex). Scaling
+	# kept gentle so a max-level shop stays kiosk-sized (~7-8 m wide).
+	var w: float = 3.5 + level * 0.04
+	var d: float = 3.0 + level * 0.03
+	var h: float = 2.2 + level * 0.02
 	# Awning extends w*0.4 toward the track from the building's near
 	# edge, so anchor that NEAR edge of the awning at track_outer + safety.
 	const SAFETY: float = 4.0
@@ -628,10 +632,12 @@ func _build_sponsor_boards(parent: Node3D, level: int) -> void:
 	var asphalt_half: float = _track.current_asphalt_width() * 0.5
 	var wave_amp: float = _track.current_wave_amp()
 	var safe_offset: float = asphalt_half + wave_amp + 1.6
-	# Boards GROW with facility level instead of multiplying — caps the
-	# total visual footprint while still rewarding upgrades.
-	var w: float = 2.4 + float(level) * 0.05
-	var h: float = 1.1 + float(level) * 0.025
+	# Boards grow gently with facility level instead of multiplying —
+	# caps the total footprint while still rewarding upgrades. At
+	# MAX_LEVEL=100 each board is ~3.4 m wide × 1.7 m tall, billboard-
+	# sized, not stadium-sized.
+	var w: float = 2.4 + float(level) * 0.01
+	var h: float = 1.1 + float(level) * 0.006
 	for idx in range(board_count):
 		# Spread along ψ ∈ [0.10π, 0.90π] of the south loop — centred on
 		# the apex but skipping the very corners near the straight.
@@ -731,15 +737,17 @@ func _build_lighting(parent: Node3D, level: int) -> void:
 func _build_grandstand(parent: Node3D, level: int) -> void:
 	# Grandstands grow with the grandstand FACILITY level AND with the
 	# track tier — a tier-4 venue's stands are bigger than a tier-1
-	# venue's at the same facility level.
-	var tier_scale: float = 1.0 + (_track.track_tier() - 1) * 0.30
+	# venue's at the same facility level. Scaling is restrained so a
+	# max-tier max-level main stand caps around 30 m wide × 6 m tall
+	# rather than the previous 138 m × 42 m monstrosity.
+	var tier_scale: float = 1.0 + (_track.track_tier() - 1) * 0.10
 
 	# Main stand on the spectator side (-Z), opposite the pit complex.
 	# Anchor the FRONT (track-facing) edge at -(track_outer + safety)
 	# so the bottom row never sits on the rumble strip at any tier.
-	var main_w: float = (8.0 + level * 0.55) * tier_scale
-	var main_d: float = 2.6 + level * 0.10
-	var main_h: float = (1.2 + level * 0.18) * tier_scale
+	var main_w: float = (8.0 + level * 0.15) * tier_scale
+	var main_d: float = 2.6 + level * 0.04
+	var main_h: float = (1.2 + level * 0.04) * tier_scale
 	const MAIN_SAFETY: float = 1.5
 	var main_z: float = -_track_outer_z(MAIN_SAFETY) - main_d * 0.5
 	_make_grandstand_block(parent, Vector3(0, 0, main_z),
@@ -748,9 +756,9 @@ func _build_grandstand(parent: Node3D, level: int) -> void:
 	# Side stands at the +X / -X ends from level 7+ (rotated 90°).
 	if level >= 7:
 		var side_levels: int = level - 6
-		var side_w: float = (5.0 + side_levels * 0.4) * tier_scale
-		var side_d: float = 2.4 + side_levels * 0.08
-		var side_h: float = (1.0 + side_levels * 0.12) * tier_scale
+		var side_w: float = (5.0 + side_levels * 0.12) * tier_scale
+		var side_d: float = 2.4 + side_levels * 0.03
+		var side_h: float = (1.0 + side_levels * 0.04) * tier_scale
 		const SIDE_SAFETY: float = 1.5
 		var side_x_offset: float = _track_outer_x(SIDE_SAFETY) + side_d * 0.5
 		# West stand at -X end
