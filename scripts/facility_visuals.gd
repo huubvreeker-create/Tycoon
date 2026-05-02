@@ -15,6 +15,7 @@ const _PIT_LANE_COLOR   := Color(0.13, 0.83, 0.96)
 const _LOUNGE_COLOR     := Color(0.86, 0.42, 0.98)
 const _MERCH_COLOR      := Color(0.55, 0.92, 0.38)
 const _GRANDSTAND_COLOR := Color(0.65, 0.55, 0.78)
+const _PARKING_COLOR    := Color(0.40, 0.65, 1.00)
 const _SPONSOR_COLORS := [
 	Color(0.96, 0.27, 0.36),
 	Color(0.99, 0.75, 0.18),
@@ -78,6 +79,7 @@ func _rebuild_one(facility: String) -> void:
 		"sponsor_boards": _build_sponsor_boards(holder, level)
 		"lighting":       _build_lighting(holder, level)
 		"grandstand":     _build_grandstand(holder, level)
+		"parking":        _build_parking(holder, level)
 
 
 # ---------------------------------------------------------------------------
@@ -598,3 +600,84 @@ func _make_grandstand_block(parent: Node3D, center: Vector3, size: Vector3, leve
 			stripe_offset = Vector3(0, roof_y - 0.15, -size.z * 0.18 + size.z * 0.32)
 		_make_label_strip(parent, _GRANDSTAND_COLOR.lightened(0.3),
 			center + stripe_offset, stripe_size)
+
+
+func _build_parking(parent: Node3D, level: int) -> void:
+	# A flat asphalt slab outside the venue with painted parking-space
+	# lines and a few visiting cars. Sits in the (-X, -Z) corner so it
+	# doesn't fight any other facility for space.
+	var rx := _track_rx()
+	var rz := _track_rz()
+
+	# More rows / cols as the lot is upgraded.
+	var rows: int = clampi(2 + level / 6, 2, 12)
+	var cols: int = clampi(5 + level / 4, 5, 22)
+	var space_w: float = 1.6
+	var space_d: float = 2.8
+	var lot_w: float = float(cols) * space_w
+	var lot_d: float = float(rows) * space_d
+	var center := Vector3(
+		-rx - 6.0 - lot_w * 0.5,
+		0.05,
+		-rz - 4.0 - lot_d * 0.5
+	)
+
+	# Asphalt slab.
+	_make_box(parent, Vector3(lot_w, 0.10, lot_d),
+		center, Color(0.10, 0.11, 0.14))
+
+	# White line markings — vertical slot dividers.
+	for c in range(cols + 1):
+		var x: float = center.x - lot_w * 0.5 + float(c) * space_w
+		_make_box(parent, Vector3(0.06, 0.04, lot_d * 0.95),
+			Vector3(x, 0.12, center.z), Color(0.85, 0.85, 0.90))
+	# Horizontal row dividers (just one between each row, plus the back).
+	for r in range(rows + 1):
+		var z: float = center.z - lot_d * 0.5 + float(r) * space_d
+		_make_box(parent, Vector3(lot_w * 0.95, 0.04, 0.06),
+			Vector3(center.x, 0.12, z), Color(0.85, 0.85, 0.90))
+
+	# A blue accent strip along the front edge so the lot reads as
+	# "parking" colour-wise alongside the other facility colours.
+	_make_label_strip(parent, _PARKING_COLOR,
+		Vector3(center.x, 0.20, center.z + lot_d * 0.5 + 0.15),
+		Vector3(lot_w * 0.4, 0.30, 0.10))
+
+	# Parked cars — about 50% occupancy at the current level. Use a
+	# seeded RNG so the layout is stable across rebuilds.
+	var max_cars: int = (rows * cols)
+	var occupancy: int = mini(level * 3, max_cars / 2 + 1)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = level * 7919 + 13
+	var taken := {}
+	var attempts: int = 0
+	while taken.size() < occupancy and attempts < occupancy * 4:
+		attempts += 1
+		var r: int = rng.randi() % rows
+		var c: int = rng.randi() % cols
+		var key: String = "%d_%d" % [r, c]
+		if taken.has(key):
+			continue
+		taken[key] = true
+		var car_x: float = center.x - lot_w * 0.5 + float(c) * space_w + space_w * 0.5
+		var car_z: float = center.z - lot_d * 0.5 + float(r) * space_d + space_d * 0.5
+		var car_color := Color(
+			rng.randf_range(0.30, 1.0),
+			rng.randf_range(0.30, 1.0),
+			rng.randf_range(0.30, 1.0)
+		)
+		# Car body
+		_make_box(parent,
+			Vector3(space_w * 0.7, 0.45, space_d * 0.78),
+			Vector3(car_x, 0.40, car_z),
+			car_color)
+		# Windshield (darker top)
+		_make_box(parent,
+			Vector3(space_w * 0.6, 0.30, space_d * 0.4),
+			Vector3(car_x, 0.65, car_z - space_d * 0.05),
+			car_color.darkened(0.45))
+
+	# Click target covering the whole lot.
+	_add_facility_click_area(parent, "parking",
+		Vector3(center.x, 1.0, center.z),
+		Vector3(lot_w + 1.0, 2.0, lot_d + 1.0))

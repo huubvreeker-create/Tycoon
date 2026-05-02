@@ -22,8 +22,6 @@ signal settings_pressed
 @onready var queue_label: Label          = %QueueLabel
 @onready var day_progress: ProgressBar   = %DayProgress
 
-@onready var ticket_minus: Button        = %TicketMinusButton
-@onready var ticket_plus: Button         = %TicketPlusButton
 @onready var ticket_label: Label         = %TicketLabel
 @onready var track_tab_button: Button    = %TrackTabButton
 @onready var kart_tab_button: Button     = %KartTabButton
@@ -57,8 +55,6 @@ func _ready() -> void:
 	EventBus.daily_event_triggered.connect(_on_daily_event)
 	EventBus.game_saved.connect(_on_game_saved)
 
-	ticket_minus.pressed.connect(func(): GameManager.bump_ticket_price(-GameManager.TICKET_STEP))
-	ticket_plus.pressed.connect(func():  GameManager.bump_ticket_price( GameManager.TICKET_STEP))
 	settings_button.pressed.connect(func(): settings_pressed.emit())
 	track_tab_button.pressed.connect(func():      tab_requested.emit("track"))
 	kart_tab_button.pressed.connect(func():       tab_requested.emit("kart"))
@@ -143,7 +139,7 @@ func _on_queue_changed(size: int) -> void:
 
 
 func _on_ticket_price_changed(price: int) -> void:
-	ticket_label.text = "€%d" % price
+	ticket_label.text = "€%s" % _format_cash(price)
 
 
 func _on_track_tier_changed(tier: int, venue: String) -> void:

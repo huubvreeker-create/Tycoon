@@ -201,6 +201,7 @@ func _add_facility_rows() -> void:
 		"sponsor_boards": Color(1.00, 0.55, 0.20),
 		"lighting":       Color(0.95, 0.95, 0.60),
 		"grandstand":     Color(0.65, 0.55, 0.78),
+		"parking":        Color(0.40, 0.65, 1.00),
 	}
 	var current_tier: int = _track.track_tier()
 	for fac: String in Facilities.facility_names():

@@ -15,6 +15,7 @@ const _BUILD_COST := {
 	"sponsor_boards":400.0,
 	"lighting":      700.0,
 	"grandstand":    600.0,
+	"parking":       450.0,
 }
 
 # Track-tier required to BUILD or UPGRADE each facility. Locked facilities
@@ -24,6 +25,7 @@ const _REQUIRED_TRACK_TIER := {
 	"pit_lane":       1,
 	"cafeteria":      2,
 	"merch_shop":     2,
+	"parking":        2,
 	"sponsor_boards": 3,
 	"grandstand":     3,
 	"lounge":         4,
@@ -38,6 +40,7 @@ const _NAMES := {
 	"sponsor_boards": "Sponsor Boards",
 	"lighting":       "Lighting Rigs",
 	"grandstand":     "Grandstands",
+	"parking":        "Parking Lot",
 }
 
 const _DESCRIPTIONS := {
@@ -48,6 +51,7 @@ const _DESCRIPTIONS := {
 	"sponsor_boards": "Sponsor revenue every day",
 	"lighting":       "Night atmosphere + revenue multiplier",
 	"grandstand":     "Spectator income + reputation per race",
+	"parking":        "More parking spaces → more daily visitors",
 }
 
 var cafeteria_level:      int = 0
@@ -57,6 +61,7 @@ var merch_shop_level:     int = 0
 var sponsor_boards_level: int = 0
 var lighting_level:       int = 0
 var grandstand_level:     int = 0
+var parking_level:        int = 0
 
 
 # --- Effects ----------------------------------------------------------------
@@ -100,13 +105,18 @@ func grandstand_reputation_per_race() -> int:
 	@warning_ignore("integer_division")
 	return grandstand_level / 5
 
+func parking_arrival_multiplier() -> float:
+	# Each parking level adds +5% to the customer arrival rate
+	# (caps the gain at +200% so it doesn't dominate the simulation).
+	return minf(3.0, 1.0 + parking_level * 0.05)
+
 func total_daily_passive_income() -> int:
 	return merch_daily_income() + sponsor_daily_income() + grandstand_daily_income()
 
 
 # --- API --------------------------------------------------------------------
 func facility_names() -> Array[String]:
-	return ["cafeteria", "pit_lane", "lounge", "merch_shop", "sponsor_boards", "lighting", "grandstand"]
+	return ["pit_lane", "cafeteria", "merch_shop", "parking", "sponsor_boards", "grandstand", "lounge", "lighting"]
 
 func display_name(facility: String) -> String:
 	return _NAMES.get(facility, facility)
@@ -123,6 +133,7 @@ func get_level(facility: String) -> int:
 		"sponsor_boards": return sponsor_boards_level
 		"lighting":       return lighting_level
 		"grandstand":     return grandstand_level
+		"parking":        return parking_level
 	return 0
 
 func required_track_tier(facility: String) -> int:
@@ -163,6 +174,7 @@ func upgrade(facility: String) -> bool:
 		"sponsor_boards": sponsor_boards_level += 1
 		"lighting":       lighting_level       += 1
 		"grandstand":     grandstand_level     += 1
+		"parking":        parking_level        += 1
 	EventBus.facility_upgraded.emit(facility, get_level(facility))
 	return true
 
@@ -193,5 +205,9 @@ func effect_text(facility: String) -> String:
 			return "€%d/day  +%d rep/race" % [
 				grandstand_daily_income(),
 				grandstand_reputation_per_race()
+			]
+		"parking":
+			return "+%.0f%% customer arrivals" % [
+				(parking_arrival_multiplier() - 1.0) * 100.0
 			]
 	return ""

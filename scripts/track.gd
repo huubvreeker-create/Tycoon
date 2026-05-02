@@ -680,8 +680,11 @@ func _add_kart_node(initial_spawn: bool) -> void:
 # --- Customer simulation ---------------------------------------------------
 func _tick_arrivals(delta: float) -> void:
 	var base_interval: float = maxf(1.6, 4.0 - GameManager.reputation * 0.02)
-	# Marketing staff and daily events scale the arrival interval.
-	var rate := Staff.marketing_arrival_multiplier() * DailyEvents.arrival_multiplier_today
+	# Marketing staff, parking capacity and daily events all scale the
+	# arrival interval (more rate = shorter interval = faster arrivals).
+	var rate: float = Staff.marketing_arrival_multiplier() \
+		* Facilities.parking_arrival_multiplier() \
+		* DailyEvents.arrival_multiplier_today
 	var interval: float = base_interval / maxf(rate, 0.1)
 	_arrival_timer += delta
 	if _arrival_timer >= interval:
