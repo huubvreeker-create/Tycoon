@@ -99,18 +99,20 @@ const TIER_RUMBLE_COLOR := {
 	9: Color(1.00, 0.20, 0.50),
    10: Color(1.00, 0.10, 0.30),
 }
-# Asphalt darkens as you climb tiers — F1 surfaces look almost-black.
+# Asphalt darkens as you climb tiers — but kept light enough to read
+# as friendly cartoon grey rather than black hole. Tier 1 is the
+# brightest "go-kart parking" grey, tier 10 the deepest race-track grey.
 const TIER_ASPHALT_COLOR := {
-	1: Color(0.20, 0.21, 0.26),
-	2: Color(0.18, 0.19, 0.24),
-	3: Color(0.16, 0.17, 0.22),
-	4: Color(0.14, 0.15, 0.20),
-	5: Color(0.12, 0.13, 0.18),
-	6: Color(0.11, 0.12, 0.16),
-	7: Color(0.10, 0.11, 0.14),
-	8: Color(0.08, 0.09, 0.12),
-	9: Color(0.07, 0.08, 0.10),
-   10: Color(0.05, 0.06, 0.08),
+	1: Color(0.50, 0.52, 0.56),
+	2: Color(0.46, 0.48, 0.52),
+	3: Color(0.42, 0.44, 0.48),
+	4: Color(0.38, 0.40, 0.44),
+	5: Color(0.34, 0.36, 0.40),
+	6: Color(0.30, 0.32, 0.36),
+	7: Color(0.27, 0.29, 0.33),
+	8: Color(0.24, 0.26, 0.30),
+	9: Color(0.21, 0.23, 0.26),
+   10: Color(0.18, 0.19, 0.22),
 }
 
 # Level-based progression. MAX_LEVEL is the cumulative cap across all
@@ -393,7 +395,7 @@ func _build_ground() -> void:
 	plane.size = Vector2(size, size)
 	ground.mesh = plane
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.16, 0.30, 0.14)  # grass green
+	mat.albedo_color = Color(0.34, 0.62, 0.30)  # vivid sunny grass
 	mat.metallic = 0.0
 	mat.roughness = 1.0
 	ground.material_override = mat

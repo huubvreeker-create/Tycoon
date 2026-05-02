@@ -200,7 +200,7 @@ func _build_cafeteria(parent: Node3D, level: int) -> void:
 	var building_pos := Vector3(patio_near_x - w * 0.5 - patio_d, h * 0.5, 0.0)
 
 	# Main building.
-	_make_box(parent, Vector3(w, h, d), building_pos, _CAFETERIA_COLOR.darkened(0.55))
+	_make_box(parent, Vector3(w, h, d), building_pos, _CAFETERIA_COLOR.darkened(0.15))
 
 	# Lit-up sign band on the side facing the track.
 	_make_label_strip(parent, _CAFETERIA_COLOR,
@@ -266,7 +266,7 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 	# Path3D so the shape is genuinely curved (no diagonal stitching).
 	var rx := _track_rx()
 	var rz := _track_rz()
-	var asphalt_color := Color(0.10, 0.11, 0.14)
+	var asphalt_color := Color(0.42, 0.44, 0.48)
 
 	# Width grows with facility level; the lane covers the +Z arc of
 	# the oval from t_start to t_end (centered at π/2 = top of oval).
@@ -442,7 +442,7 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 		gbm.size = Vector3(bay_w * 0.95, bay_h, bay_d)
 		garage.mesh = gbm
 		var gmat := StandardMaterial3D.new()
-		gmat.albedo_color = _PIT_LANE_COLOR.darkened(0.65)
+		gmat.albedo_color = _PIT_LANE_COLOR.darkened(0.30)
 		gmat.metallic = 0.3
 		gmat.roughness = 0.6
 		garage.material_override = gmat
@@ -484,7 +484,7 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 		Vector2(paddock_inner,             -0.03),
 	])
 	var paddock_mat := StandardMaterial3D.new()
-	paddock_mat.albedo_color = Color(0.16, 0.17, 0.20)
+	paddock_mat.albedo_color = Color(0.50, 0.52, 0.55)
 	paddock_mat.roughness = 0.9
 	paddock_csg.material_override = paddock_mat
 	parent.add_child(paddock_csg)
@@ -512,7 +512,7 @@ func _build_lounge(parent: Node3D, level: int) -> void:
 	var pos := Vector3(0.0, h * 0.5, -_track_outer_z(SAFETY) - d * 0.5)
 
 	# Main tower
-	_make_box(parent, Vector3(w, h, d), pos, _LOUNGE_COLOR.darkened(0.55))
+	_make_box(parent, Vector3(w, h, d), pos, _LOUNGE_COLOR.darkened(0.15))
 
 	# Glass strips on each floor (front + both sides).
 	var glass_color := _LOUNGE_COLOR.lightened(0.30)
@@ -571,7 +571,7 @@ func _build_merch_shop(parent: Node3D, level: int) -> void:
 	# We want awning near edge = +track_outer + safety
 	# => pos.x = track_outer + safety + awning_extent + w/2
 	var pos := Vector3(_track_outer_x(SAFETY) + awning_extent + w * 0.5, h * 0.5, 0.0)
-	_make_box(parent, Vector3(w, h, d), pos, _MERCH_COLOR.darkened(0.55))
+	_make_box(parent, Vector3(w, h, d), pos, _MERCH_COLOR.darkened(0.15))
 	# Sign band on the side facing the track.
 	_make_label_strip(parent, _MERCH_COLOR,
 		pos + Vector3(-w * 0.5 - 0.05, h * 0.4, 0),
@@ -686,6 +686,10 @@ func _build_lighting(parent: Node3D, level: int) -> void:
 		var to_centre := Vector3(-p.x, 0, -p.z).normalized()
 		fix.rotation.y = atan2(to_centre.x, to_centre.z)
 		parent.add_child(fix)
+		# A festival flag on top of each pole — picks a colour from a
+		# bright palette based on the pole index for a colourful skyline.
+		var flag_color: Color = _FLAG_COLORS[positions.find(p) % _FLAG_COLORS.size()]
+		_add_pole_flag(parent, p + Vector3(0, pole_height + 0.20, 0), flag_color)
 		# Click target near the base of each pole.
 		_add_facility_click_area(parent, "lighting",
 			p + Vector3(0, pole_height * 0.5, 0),
@@ -950,8 +954,8 @@ func _build_marketing(parent: Node3D, level: int) -> void:
 const _WALKWAY_COLOR := Color(0.55, 0.54, 0.50)        # concrete grey
 const _ROAD_COLOR    := Color(0.13, 0.14, 0.18)        # asphalt road
 const _TICKET_COLOR  := Color(0.95, 0.85, 0.30)        # bright yellow
-const _TREE_TRUNK    := Color(0.32, 0.22, 0.12)
-const _TREE_FOLIAGE  := Color(0.18, 0.45, 0.18)
+const _TREE_TRUNK    := Color(0.40, 0.26, 0.14)
+const _TREE_FOLIAGE  := Color(0.30, 0.65, 0.28)
 
 
 # Hub position — the venue's "ticket booth" sits here, and every
@@ -1035,6 +1039,12 @@ func _build_walkways(parent: Node3D) -> void:
 	_make_road(parent, hub + Vector3(0, 0, plaza_d * 0.5),
 		grandstand_entrance, 2.4, _WALKWAY_COLOR)
 
+	# Spectator crowd on the plaza + walking toward the grandstand.
+	_add_spectators(parent, hub, 6.0, 16, 4711)
+	_add_spectators(parent,
+		(hub + Vector3(0, 0, plaza_d * 0.5) + grandstand_entrance) * 0.5,
+		3.5, 8, 8123)
+
 
 func _make_road(parent: Node3D, a: Vector3, b: Vector3, width: float, color: Color) -> void:
 	# Single rectangular slab between two points (in the XZ plane).
@@ -1117,3 +1127,84 @@ func _make_tree(parent: Node3D, base_pos: Vector3, height: float, rng: RandomNum
 	foliage.material_override = foliage_mat
 	foliage.position = base_pos + Vector3(0, height * 0.40 + height * 0.35, 0)
 	parent.add_child(foliage)
+
+
+# ---------------------------------------------------------------------------
+# Cartoon-style spectators (small coloured figures clustered around a centre)
+# ---------------------------------------------------------------------------
+const _SPECTATOR_SHIRTS: Array[Color] = [
+	Color(0.95, 0.30, 0.30),  # red
+	Color(0.30, 0.55, 0.95),  # blue
+	Color(0.95, 0.85, 0.30),  # yellow
+	Color(0.45, 0.85, 0.40),  # green
+	Color(0.85, 0.45, 0.95),  # purple
+	Color(0.95, 0.65, 0.30),  # orange
+	Color(0.95, 0.95, 0.95),  # white
+	Color(0.20, 0.85, 0.85),  # cyan
+]
+const _SPECTATOR_SKIN: Color = Color(0.95, 0.78, 0.62)
+
+
+func _add_spectators(parent: Node3D, center: Vector3, radius: float, count: int, seed_id: int) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_id
+	for i in range(count):
+		var angle: float = rng.randf_range(0.0, TAU)
+		var r: float = rng.randf_range(0.3, radius)
+		var x: float = center.x + cos(angle) * r
+		var z: float = center.z + sin(angle) * r
+		var shirt: Color = _SPECTATOR_SHIRTS[rng.randi() % _SPECTATOR_SHIRTS.size()]
+		# Body — colored capsule
+		var body := MeshInstance3D.new()
+		var bm := CylinderMesh.new()
+		bm.top_radius = 0.18
+		bm.bottom_radius = 0.22
+		bm.height = 0.65
+		body.mesh = bm
+		var bmat := StandardMaterial3D.new()
+		bmat.albedo_color = shirt
+		bmat.roughness = 0.9
+		body.material_override = bmat
+		body.position = Vector3(x, 0.32, z)
+		parent.add_child(body)
+		# Head — small skin-coloured sphere
+		var head := MeshInstance3D.new()
+		var hm := SphereMesh.new()
+		hm.radius = 0.14
+		hm.height = 0.28
+		head.mesh = hm
+		var hmat := StandardMaterial3D.new()
+		hmat.albedo_color = _SPECTATOR_SKIN
+		hmat.roughness = 0.85
+		head.material_override = hmat
+		head.position = Vector3(x, 0.79, z)
+		parent.add_child(head)
+
+
+# ---------------------------------------------------------------------------
+# Festival flag — small bright cube on top of a vertical pole.
+# ---------------------------------------------------------------------------
+const _FLAG_COLORS: Array[Color] = [
+	Color(0.95, 0.30, 0.30),
+	Color(0.30, 0.55, 0.95),
+	Color(0.95, 0.85, 0.30),
+	Color(0.45, 0.85, 0.40),
+	Color(0.85, 0.45, 0.95),
+	Color(0.95, 0.65, 0.30),
+]
+
+
+func _add_pole_flag(parent: Node3D, top_pos: Vector3, color: Color) -> void:
+	var flag := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.6, 0.4, 0.04)
+	flag.mesh = bm
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.emission_enabled = true
+	mat.emission = color
+	mat.emission_energy_multiplier = 0.8
+	flag.material_override = mat
+	# Offset so the flag flies to the side of the pole
+	flag.position = top_pos + Vector3(0.30, 0.10, 0)
+	parent.add_child(flag)
