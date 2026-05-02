@@ -271,21 +271,28 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 	# Width grows with facility level; the lane covers the +Z arc of
 	# the oval from t_start to t_end (centered at π/2 = top of oval).
 	var pit_lane_width: float = 2.6 + float(level) * 0.06
-	# Maximum outward offset at the apex of the pit curve. Has to clear
-	# the rumble strip + give breathing room for the wall + lane.
+	# Maximum outward offset at the apex of the pit curve. Must clear
+	# the rumble strip even at chicane wave-peaks; APEX_GAP grows with
+	# wave_amp so higher tiers get more cushion automatically.
+	var wave_amp: float = _track.current_wave_amp()
 	var asphalt_outer: float = _track.current_asphalt_width() * 0.5 \
-		+ _track.current_wave_amp() + _RUMBLE_INSET_VAL
-	const APEX_GAP: float = 1.2     # gap between pit's INNER edge and rumble at apex
-	var max_offset: float = asphalt_outer + pit_lane_width * 0.5 + APEX_GAP
-	# Arc range — covers ~120° centred on the +Z apex (90°).
-	var t_start: float = deg_to_rad(30.0)
-	var t_end: float = deg_to_rad(150.0)
+		+ wave_amp + _RUMBLE_INSET_VAL
+	var apex_gap: float = 1.5 + wave_amp * 0.4
+	var max_offset: float = asphalt_outer + pit_lane_width * 0.5 + apex_gap
+	# Arc range covers ~130° centred on the +Z apex (90°). 25°..155° is
+	# wide enough that, with our 5% merge ramps, every chicane wave-peak
+	# at every tier falls inside the FULL-OFFSET plateau (verified
+	# numerically across all 10 tiers / wave frequencies).
+	var t_start: float = deg_to_rad(25.0)
+	var t_end: float = deg_to_rad(155.0)
 	var t_range: float = t_end - t_start
 	var segments: int = 64
 
 	# Build the curved Path3D for the pit lane. At each sample we offset
-	# the oval point outward by a sin-weighted amount so the curve sits
-	# ON the track centreline at both ends and at its peak in the middle.
+	# the oval point outward by a TRAPEZOIDAL profile (smoothstep ramp
+	# in the first 5% / out the last 5%, plateau at the full max_offset
+	# in between). This keeps the lane safely outside the asphalt for
+	# 90% of the arc and only tapers at the very ends to merge cleanly.
 	var pit_path := Path3D.new()
 	pit_path.name = "PitPath"
 	parent.add_child(pit_path)
@@ -298,8 +305,12 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 		var t: float = t_start + p * t_range
 		var oval_pt := Vector3(rx * cos(t), 0.0, rz * sin(t))
 		var n := Vector2(rz * cos(t), rx * sin(t)).normalized()
-		# sin(p * π) → 0 at p=0 / p=1, peaks at p=0.5
-		var offset_amt: float = sin(p * PI) * max_offset
+		# Trapezoidal: ramps 0→1 over p∈[0,0.05], plateau at 1, ramps
+		# 1→0 over p∈[0.95,1].
+		var ramp_in: float = smoothstep(0.0, 0.05, p)
+		var ramp_out: float = 1.0 - smoothstep(0.95, 1.0, p)
+		var offset_factor: float = ramp_in * ramp_out
+		var offset_amt: float = offset_factor * max_offset
 		var center := Vector3(
 			oval_pt.x + n.x * offset_amt,
 			0.0,

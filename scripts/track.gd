@@ -627,27 +627,40 @@ func _build_start_finish() -> void:
 
 	# Starting-grid markers behind the finish line, alternating sides
 	# (real F1 staggered grid). One marker per kart-capacity slot.
+	# We sample the actual track curve at -back_distance from start so
+	# the markers track chicane wobble — they'll always sit ON the
+	# asphalt, even on a tier-10 wavy circuit.
 	var grid_count: int = kart_capacity()
 	var spacing: float = 1.6
-	for i in range(grid_count):
-		var back_distance: float = float(i / 2 + 1) * spacing
-		var side_sign: float = -1.0 if (i % 2 == 0) else 1.0
-		var marker_pos: Vector3 = start_pos \
-			- tangent * back_distance \
-			+ perp_grid * (side_sign * w * 0.22)
-		var marker := MeshInstance3D.new()
-		var mbm := BoxMesh.new()
-		mbm.size = Vector3(0.6, 0.05, 0.30)
-		marker.mesh = mbm
-		var mmat := StandardMaterial3D.new()
-		mmat.albedo_color = Color(0.92, 0.92, 0.95)
-		mmat.emission_enabled = true
-		mmat.emission = Color(0.92, 0.92, 0.95)
-		mmat.emission_energy_multiplier = 0.45
-		marker.material_override = mmat
-		marker.position = marker_pos + Vector3(0, 0.06, 0)
-		marker.rotation.y = rot_y
-		start_finish_root.add_child(marker)
+	var bake_len: float = curve.get_baked_length()
+	if bake_len > 0.1:
+		for i in range(grid_count):
+			var back_distance: float = float(i / 2 + 1) * spacing
+			var side_sign: float = -1.0 if (i % 2 == 0) else 1.0
+			# Closed curve: going BEFORE start by `back_distance` is the
+			# same as sampling at (length - back_distance) from start.
+			var sample_d: float = fposmod(bake_len - back_distance, bake_len)
+			var marker_center: Vector3 = curve.sample_baked(sample_d)
+			var ahead_d: float = fposmod(sample_d + 0.4, bake_len)
+			var ahead_pt: Vector3 = curve.sample_baked(ahead_d)
+			var local_tangent: Vector3 = (ahead_pt - marker_center).normalized()
+			# Inward perpendicular at this sample (matches perp_grid
+			# semantics — points toward the oval centre).
+			var local_perp: Vector3 = Vector3(-local_tangent.z, 0, local_tangent.x)
+			var marker_pos: Vector3 = marker_center + local_perp * (side_sign * w * 0.22)
+			var marker := MeshInstance3D.new()
+			var mbm := BoxMesh.new()
+			mbm.size = Vector3(0.6, 0.05, 0.30)
+			marker.mesh = mbm
+			var mmat := StandardMaterial3D.new()
+			mmat.albedo_color = Color(0.92, 0.92, 0.95)
+			mmat.emission_enabled = true
+			mmat.emission = Color(0.92, 0.92, 0.95)
+			mmat.emission_energy_multiplier = 0.45
+			marker.material_override = mmat
+			marker.position = marker_pos + Vector3(0, 0.06, 0)
+			marker.rotation.y = atan2(-local_tangent.z, local_tangent.x)
+			start_finish_root.add_child(marker)
 
 
 func _add_kart_node(initial_spawn: bool) -> void:
