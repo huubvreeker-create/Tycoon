@@ -249,25 +249,41 @@ func _add_staff_rows() -> void:
 		"instructor":   Color(0.55, 0.92, 0.38),
 		"janitor":      Color(0.96, 0.27, 0.36),
 	}
+	var staff_tier: int = _track.track_tier()
 	for role: String in Staff.role_names():
 		var n := Staff.get_count(role)
 		var on_hire: Callable = _make_hire_callable(role)
+		var unlocked: bool = Staff.is_unlocked(role, staff_tier)
+		var role_cap: int = Staff.current_role_cap(role)
+		var label: String
+		var max_label: String = "FULL TEAM"
+		var detail: String = "%s\n€%d/day each  —  %s" % [
+			Staff.description(role),
+			Staff.daily_salary(role),
+			Staff.effect_text(role),
+		]
+		if not unlocked:
+			label = "LOCKED"
+			max_label = "Requires Track Tier %d" % Staff.required_track_tier(role)
+			detail = "Upgrade the track to tier %d to unlock this role." \
+				% Staff.required_track_tier(role)
+		elif n >= role_cap:
+			label = "%d / %d  hired" % [n, role_cap]
+			max_label = "Tier cap (%d) reached" % role_cap
+		else:
+			label = "%d / %d  hired" % [n, role_cap]
 		_add_upgrade_row(
 			colors.get(role, Color.WHITE),
 			Staff.display_name(role),
-			"%d / %d  hired" % [n, Staff.MAX_PER_ROLE],
+			label,
 			float(n),
-			float(Staff.MAX_PER_ROLE),
-			"%s\n€%d/day each  —  %s" % [
-				Staff.description(role),
-				Staff.daily_salary(role),
-				Staff.effect_text(role),
-			],
-			Staff.can_hire(role),
+			float(role_cap),
+			detail,
+			unlocked and Staff.can_hire(role),
 			Staff.hire_cost(role),
 			on_hire,
 			"Hire",
-			"FULL TEAM"
+			max_label
 		)
 
 

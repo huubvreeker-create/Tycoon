@@ -673,11 +673,13 @@ func _build_sponsor_boards(parent: Node3D, level: int) -> void:
 
 
 func _build_lighting(parent: Node3D, level: int) -> void:
-	# Tall poles + light fixtures arranged around the track footprint.
-	# The track is asymmetric (north straight + south loop), so the
-	# lighting ring is centred on the track's geometric centre rather
-	# than the world origin. Otherwise +Z poles end up inside the pit
-	# complex and -Z poles sit halfway through the south loop.
+	# Tall poles + light fixtures arranged around the OUTSIDE of the
+	# south loop (and at the east/west extremes). The +Z arc is
+	# DELIBERATELY skipped — the pit complex sits there and the pit
+	# wall already has its own emissive cyan accent, so dropping a
+	# floodlight pole in the middle of the start straight (which
+	# is what the old symmetric ring produced) is both ugly and
+	# physically wrong.
 	var asphalt_half: float = _track.current_asphalt_width() * 0.5
 	var wave_amp: float = _track.current_wave_amp()
 	var safe_offset: float = asphalt_half + wave_amp + 2.0
@@ -688,11 +690,16 @@ func _build_lighting(parent: Node3D, level: int) -> void:
 	var ring_z: float = loop_depth * 0.5 + safe_offset
 	var pole_count := mini(4 + (level - 1), 12)
 	var pole_height := 6.0 + level * 0.15
+	# Distribute poles across a 3/4 ring spanning the south + east +
+	# west arcs only. Arc starts at PI*0.75 (NW corner heading south)
+	# and runs clockwise through the south to PI*2.25 (NE corner).
+	var arc_start: float = PI * 0.75
+	var arc_span: float = PI * 1.5
 	var positions: Array[Vector3] = []
 	for i in range(pole_count):
-		var t := float(i) / float(pole_count) * TAU + PI * 0.25
-		var x := cos(t) * ring_x
-		var z := center_z + sin(t) * ring_z
+		var t: float = arc_start + (float(i) + 0.5) / float(pole_count) * arc_span
+		var x: float = cos(t) * ring_x
+		var z: float = center_z + sin(t) * ring_z
 		positions.append(Vector3(x, 0, z))
 	for p: Vector3 in positions:
 		# Pole
