@@ -40,10 +40,10 @@ func _ready() -> void:
 		add_child(holder)
 		_root_holders[facility] = holder
 	EventBus.facility_upgraded.connect(_on_facility_upgraded)
+	# Track size only changes on tier rollover (per-level upgrades buy
+	# stats, not new geometry), so we only need to rebuild facility
+	# layout on track_tier_changed.
 	EventBus.track_tier_changed.connect(_on_tier_changed.unbind(2))
-	# Also rebuild on per-level track upgrades so facilities track the
-	# track's continuous growth (RX/RZ now interpolate every level).
-	EventBus.track_level_changed.connect(_on_tier_changed.unbind(2))
 	# Defer first build so the track has constructed its path/footprint.
 	call_deferred("_rebuild_all")
 
@@ -249,13 +249,15 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 	var asphalt_color := Color(0.10, 0.11, 0.14)
 
 	# Pit straight runs along the long axis (X) on the +Z side.
+	# Width grows with facility level; length stays close to the track
+	# diameter (real circuits run pit straights alongside a long track
+	# straight).
 	var pit_lane_width: float = 2.6 + level * 0.06
 	var pit_lane_length: float = rx * 1.2
-	# Anchor the pit-lane's NEAR edge (the side facing the track) at
-	# `track_outer_z + SAFETY` so it never overlaps the rumble strip,
-	# even at high tiers where the chicane wave pushes the asphalt
-	# outward by several metres.
-	const SAFETY: float = 3.0
+	# Anchor the pit-lane's NEAR edge (the side facing the track) just
+	# past the rumble strip — only ~1m of grass between them so it
+	# reads as a real parallel pit lane instead of a far-away road.
+	const SAFETY: float = 1.2
 	var pit_lane_z: float = _track_outer_z(SAFETY) + pit_lane_width * 0.5
 	# Asphalt
 	_make_box(parent, Vector3(pit_lane_length, 0.08, pit_lane_width),
@@ -311,24 +313,33 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 		_PIT_LANE_COLOR.darkened(0.35))
 
 	# Connector slips bridging the pit straight to the main track.
-	# Each end of the pit lane gets a connector whose START is the end
-	# of the pit straight, and whose END sits ON the track oval at
-	# 60° (right side) or 120° (left side) — so the slip visibly
-	# merges into the asphalt instead of dangling in empty space.
+	# Each end gets a connector whose START is the end of the pit
+	# straight and whose END sits on the track oval at a SHALLOW
+	# angle (close to t=80° / 100° — near the top of the oval, where
+	# the track tangent is mostly along the X-axis like the pit
+	# straight). This makes the connectors read as real merge ramps
+	# instead of steep diagonal slabs.
 	var connector_width: float = pit_lane_width * 0.85
+	# 80° from +X axis = nearly at the +Z apex of the oval; mirror to
+	# 100° for the -X end. The closer the angle is to 90°, the
+	# shallower the merge (more parallel to the pit straight).
+	var merge_angle: float = deg_to_rad(80.0)
+	var outer_offset: float = _track.current_asphalt_width() * 0.5 \
+		+ _track.current_wave_amp() + _RUMBLE_INSET_VAL
 	for sign_x: int in [-1, 1]:
 		var start_pos := Vector3(float(sign_x) * pit_lane_length * 0.5, 0.04, pit_lane_z)
-		# Angle on the oval: 60° on the +X side, 120° on the -X side.
-		var t_angle: float = (PI / 3.0) if sign_x > 0 else (2.0 * PI / 3.0)
-		# Push the endpoint slightly OUTSIDE the rumble strip along
-		# the oval's outward normal, so the connector visibly overlaps
-		# the asphalt's outer edge.
+		# +X side merges at +80°; -X side at +100° (= 180° - 80°).
+		var t_angle: float = merge_angle if sign_x > 0 else (PI - merge_angle)
 		var oval_x: float = rx * cos(t_angle)
 		var oval_z: float = rz * sin(t_angle)
-		var n_raw := Vector2(rz * cos(t_angle), rx * sin(t_angle))
-		var n := n_raw.normalized()
-		var outer_offset: float = _track.current_asphalt_width() * 0.5 + _track.current_wave_amp() + _RUMBLE_INSET_VAL
-		var end_pos := Vector3(oval_x + n.x * outer_offset, 0.04, oval_z + n.y * outer_offset)
+		var n := Vector2(rz * cos(t_angle), rx * sin(t_angle)).normalized()
+		# End slightly inside the rumble strip so the connector visibly
+		# overlaps the asphalt's outer edge (instead of stopping just
+		# past it on the grass).
+		var end_pos := Vector3(
+			oval_x + n.x * (outer_offset - 0.3),
+			0.04,
+			oval_z + n.y * (outer_offset - 0.3))
 		var direction := end_pos - start_pos
 		var length: float = direction.length()
 		if length < 0.01:

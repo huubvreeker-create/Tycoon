@@ -236,41 +236,26 @@ func levels_in_current_kart_tier() -> int:
 	return TIER_LEVEL_CAPS[t - 1] - _tier_floor(t)
 
 
-# Linear interpolation between this tier's table value and the next
-# tier's, based on how far the player has progressed within the
-# current tier. Lets continuous per-level upgrades morph the visuals
-# smoothly toward the next tier instead of snapping at tier rollover.
-func _interp_value_for(table: Dictionary) -> float:
-	var t: int = track_tier()
-	var base_val: float = float(table[t])
-	if t >= TIER_COUNT:
-		return base_val
-	var levels: int = levels_in_current_track_tier()
-	if levels <= 1:
-		return base_val
-	var lvl_progress: float = float(track_level_in_tier() - 1) / float(levels - 1)
-	var next_val: float = float(table[t + 1])
-	return lerpf(base_val, next_val, lvl_progress)
-
+# Track geometry is DISCRETE per tier — only changes at tier rollover,
+# not on every per-level upgrade. The "current_*" wrappers exist so
+# callers don't have to reach into the tier tables themselves.
 func current_rx() -> float:
-	return _interp_value_for(TIER_TRACK_RX)
+	return float(TIER_TRACK_RX[track_tier()])
 
 func current_rz() -> float:
-	return _interp_value_for(TIER_TRACK_RZ)
+	return float(TIER_TRACK_RZ[track_tier()])
 
 func current_asphalt_width() -> float:
-	return _interp_value_for(TIER_ASPHALT_WIDTH)
+	return float(TIER_ASPHALT_WIDTH[track_tier()])
 
 func current_wave_amp() -> float:
-	return _interp_value_for(TIER_WAVE_AMP)
+	return float(TIER_WAVE_AMP[track_tier()])
 
 func current_wave_freq() -> int:
-	# Discrete — wave count only changes at tier rollovers so the
-	# chicane shape stays stable across each tier's levels.
 	return TIER_WAVE_FREQ[track_tier()]
 
 func current_race_duration() -> float:
-	return _interp_value_for(TIER_RACE_DURATION)
+	return float(TIER_RACE_DURATION[track_tier()])
 
 
 func venue_name() -> String:
@@ -324,12 +309,13 @@ func upgrade_track() -> bool:
 	track_level += 1
 	var new_tier := track_tier()
 	if new_tier != prev_tier:
+		# Tier rollover — full visual rebuild (size, colour, chicanes,
+		# garages, grandstands all snap to the new tier's recipe).
 		_rebuild_for_new_tier()
 		EventBus.track_tier_changed.emit(new_tier, venue_name())
-	else:
-		# Same tier — just nudge the geometry so the player sees a
-		# small but visible change for every single upgrade tap.
-		_refresh_track_geometry()
+	# NOTE: same-tier upgrades intentionally do NOT change the track
+	# geometry — only the tier rollover changes the look of the venue.
+	# Per-level upgrades only buy stat improvements (cost, capacity).
 	EventBus.track_level_changed.emit(track_level, new_tier)
 	EventBus.kart_count_changed.emit(karts.size(), kart_capacity())
 	return true
@@ -574,21 +560,51 @@ func _build_start_finish() -> void:
 	var t_tier: int = track_tier()
 	var w: float = TIER_ASPHALT_WIDTH[t_tier]
 
-	# Finish line — bright white slab across the asphalt.
-	var finish := MeshInstance3D.new()
-	finish.name = "FinishLine"
-	var fbm := BoxMesh.new()
-	fbm.size = Vector3(0.45, 0.07, w * 0.95)
-	finish.mesh = fbm
-	var fmat := StandardMaterial3D.new()
-	fmat.albedo_color = Color(0.96, 0.97, 1.0)
-	fmat.emission_enabled = true
-	fmat.emission = Color(0.96, 0.97, 1.0)
-	fmat.emission_energy_multiplier = 0.8
-	finish.material_override = fmat
-	finish.position = start_pos + Vector3(0, 0.06, 0)
-	finish.rotation.y = rot_y
-	start_finish_root.add_child(finish)
+	# Outward perpendicular (used for podium) and inward (used for grid
+	# markers + checker offsets). Track is parametrised CCW.
+	var perp_out: Vector3 = Vector3(tangent.z, 0, -tangent.x).normalized()
+	var perp_grid: Vector3 = -perp_out
+
+	# Checkered finish line — two rows of alternating black / white
+	# squares spanning the asphalt width, painted across the start of
+	# the lap. Reads as a real F1 chequered finish line from above.
+	var checker_count: int = 8
+	var checker_total_w: float = w * 0.95           # span across asphalt
+	var checker_w: float = checker_total_w / float(checker_count)
+	var checker_l: float = 0.55                     # length along tangent
+	var rows: int = 2
+	var row_gap: float = 0.0
+	for row in range(rows):
+		var along_offset: float = -checker_l * float(rows) * 0.5 \
+			+ (float(row) + 0.5) * checker_l
+		for i in range(checker_count):
+			# Alternate so neighbouring squares (both across and along)
+			# differ — gives the proper checkerboard pattern.
+			var is_white: bool = ((i + row) % 2 == 0)
+			var across_offset: float = -checker_total_w * 0.5 \
+				+ (float(i) + 0.5) * checker_w
+			var c_pos: Vector3 = start_pos \
+				+ tangent * along_offset \
+				+ perp_grid * across_offset \
+				+ Vector3(0, 0.07, 0)
+			var c := MeshInstance3D.new()
+			var cbm := BoxMesh.new()
+			cbm.size = Vector3(checker_l * 0.96, 0.06, checker_w * 0.94)
+			c.mesh = cbm
+			var cmat := StandardMaterial3D.new()
+			if is_white:
+				cmat.albedo_color = Color(0.96, 0.97, 1.0)
+				cmat.emission_enabled = true
+				cmat.emission = Color(0.96, 0.97, 1.0)
+				cmat.emission_energy_multiplier = 0.45
+			else:
+				cmat.albedo_color = Color(0.05, 0.05, 0.07)
+				cmat.roughness = 0.9
+			c.material_override = cmat
+			c.position = c_pos
+			c.rotation.y = rot_y
+			start_finish_root.add_child(c)
+		row_gap += 0.0  # placeholder, no gap between rows
 
 	# A subtle "podium" pillar just outside the asphalt to make the
 	# start/finish location easy to spot from anywhere on the venue.
@@ -602,14 +618,7 @@ func _build_start_finish() -> void:
 	pmat.emission = Color(0.96, 0.97, 1.0)
 	pmat.emission_energy_multiplier = 0.5
 	podium.material_override = pmat
-	# Outward perpendicular = the side that points AWAY from the oval
-	# centre. With the curve parametrised counter-clockwise this is
-	# (tangent.z, 0, -tangent.x) — used to push the podium to grass.
-	var perp_out: Vector3 = Vector3(tangent.z, 0, -tangent.x).normalized()
 	podium.position = start_pos + perp_out * (w * 0.55 + 0.4) + Vector3(0, 0.8, 0)
-	# Inward perp (opposite direction) keeps the grid markers ON the
-	# asphalt; alternating ± gives the staggered F1 grid layout.
-	var perp_grid: Vector3 = -perp_out
 	start_finish_root.add_child(podium)
 
 	# Starting-grid markers behind the finish line, alternating sides
