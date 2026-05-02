@@ -19,8 +19,11 @@ signal tapped(screen_pos: Vector2)
 @export var pan_speed: float = 0.06
 @export var min_zoom: float = 14.0
 @export var max_zoom: float = 60.0
-@export var initial_zoom: float = 32.0
+@export var initial_zoom: float = 26.0
 @export var pitch_degrees: float = -55.0
+# Yaw the rig so the track's longer X axis runs down the portrait
+# viewport — uses the screen height for the wider track dimension.
+@export var yaw_degrees: float = 90.0
 @export var pan_bounds: float = 45.0
 @export var tap_threshold_px: float = 14.0
 
@@ -40,6 +43,7 @@ var _zoom_distance: float = 32.0
 
 func _ready() -> void:
 	_zoom_distance = initial_zoom
+	rotation = Vector3(0, deg_to_rad(yaw_degrees), 0)
 	pitch_node.rotation = Vector3(deg_to_rad(pitch_degrees), 0, 0)
 	_apply_zoom()
 

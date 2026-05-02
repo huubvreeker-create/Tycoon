@@ -83,51 +83,56 @@ func flash_spawn() -> void:
 # --- Construction ----------------------------------------------------------
 func _build_meshes() -> void:
 	# PathFollow3D with ROTATION_Y: local -Z points forward along path.
-	# Body: 1.0 m wide (X), 0.28 m tall (Y), 1.6 m long (Z along path).
+	# Sized for visibility from a top-down portrait camera ~26 m away.
+	# Body: 1.5 m wide (X), 0.45 m tall (Y), 2.4 m long (Z along path).
 	body_mesh = MeshInstance3D.new()
 	body_mesh.name = "Body"
 	var body := BoxMesh.new()
-	body.size = Vector3(1.0, 0.28, 1.6)
+	body.size = Vector3(1.5, 0.45, 2.4)
 	body_mesh.mesh = body
 	body_material = StandardMaterial3D.new()
 	body_material.albedo_color = kart_color
 	body_material.metallic = 0.2
-	body_material.roughness = 0.5
+	body_material.roughness = 0.45
+	# Always-on faint emissive so the kart is visible against dark asphalt.
+	body_material.emission_enabled = true
+	body_material.emission = kart_color
+	body_material.emission_energy_multiplier = 0.4
 	body_mesh.material_override = body_material
-	body_mesh.position = Vector3(0, 0.38, 0)
+	body_mesh.position = Vector3(0, 0.55, 0)
 	add_child(body_mesh)
 
 	# Cockpit: sits toward the rear (+Z side) above the body.
 	cockpit_mesh = MeshInstance3D.new()
 	cockpit_mesh.name = "Cockpit"
 	var cockpit := BoxMesh.new()
-	cockpit.size = Vector3(0.55, 0.25, 0.65)
+	cockpit.size = Vector3(0.85, 0.40, 1.0)
 	cockpit_mesh.mesh = cockpit
 	var cockpit_mat := StandardMaterial3D.new()
 	cockpit_mat.albedo_color = kart_color.darkened(0.45)
 	cockpit_mat.roughness = 0.6
 	cockpit_mesh.material_override = cockpit_mat
-	cockpit_mesh.position = Vector3(0, 0.63, 0.22)
+	cockpit_mesh.position = Vector3(0, 1.0, 0.32)
 	add_child(cockpit_mesh)
 
 	# Rear spoiler (visible tier 2+).
 	spoiler_mesh = MeshInstance3D.new()
 	spoiler_mesh.name = "Spoiler"
 	var spoiler := BoxMesh.new()
-	spoiler.size = Vector3(0.85, 0.30, 0.14)
+	spoiler.size = Vector3(1.3, 0.45, 0.20)
 	spoiler_mesh.mesh = spoiler
 	var spoiler_mat := StandardMaterial3D.new()
 	spoiler_mat.albedo_color = kart_color.darkened(0.2)
 	spoiler_mesh.material_override = spoiler_mat
-	spoiler_mesh.position = Vector3(0, 0.64, 0.78)
+	spoiler_mesh.position = Vector3(0, 1.0, 1.15)
 	add_child(spoiler_mesh)
 
 	# Halo (tier 4): flat ring above cockpit.
 	halo_mesh = MeshInstance3D.new()
 	halo_mesh.name = "Halo"
 	var halo := TorusMesh.new()
-	halo.inner_radius = 0.28
-	halo.outer_radius = 0.34
+	halo.inner_radius = 0.42
+	halo.outer_radius = 0.50
 	halo_mesh.mesh = halo
 	var halo_mat := StandardMaterial3D.new()
 	halo_mat.albedo_color = kart_color.lightened(0.45)
@@ -135,26 +140,42 @@ func _build_meshes() -> void:
 	halo_mat.emission = kart_color.lightened(0.5)
 	halo_mat.emission_energy_multiplier = 1.2
 	halo_mesh.material_override = halo_mat
-	halo_mesh.position = Vector3(0, 1.0, 0.22)
+	halo_mesh.position = Vector3(0, 1.55, 0.32)
 	halo_mesh.rotation = Vector3(deg_to_rad(90), 0, 0)
 	add_child(halo_mesh)
 
+	# Beacon — a glowing colored cube above the cockpit so each kart is
+	# unmissable from the top-down portrait camera even at full zoom-out.
+	var beacon := MeshInstance3D.new()
+	beacon.name = "Beacon"
+	var beacon_mesh := BoxMesh.new()
+	beacon_mesh.size = Vector3(0.55, 0.55, 0.55)
+	beacon.mesh = beacon_mesh
+	var beacon_mat := StandardMaterial3D.new()
+	beacon_mat.albedo_color = kart_color.lightened(0.25)
+	beacon_mat.emission_enabled = true
+	beacon_mat.emission = kart_color
+	beacon_mat.emission_energy_multiplier = 1.8
+	beacon.material_override = beacon_mat
+	beacon.position = Vector3(0, 1.65, 0.0)
+	add_child(beacon)
+
 	# Wheels: CylinderMesh with axis along X (rotated 90° around Z).
-	# Front axle at Z=-0.58, rear at Z=+0.58; left/right at X=±0.56.
+	# Front axle at Z=-0.85, rear at Z=+0.85; left/right at X=±0.85.
 	var wheel_mat := StandardMaterial3D.new()
 	wheel_mat.albedo_color = Color(0.08, 0.08, 0.10)
 	wheel_mat.roughness = 0.8
 	for offset: Vector3 in [
-		Vector3( 0.56, 0.20,  0.58),
-		Vector3( 0.56, 0.20, -0.58),
-		Vector3(-0.56, 0.20,  0.58),
-		Vector3(-0.56, 0.20, -0.58),
+		Vector3( 0.85, 0.30,  0.85),
+		Vector3( 0.85, 0.30, -0.85),
+		Vector3(-0.85, 0.30,  0.85),
+		Vector3(-0.85, 0.30, -0.85),
 	]:
 		var wheel := MeshInstance3D.new()
 		var cyl := CylinderMesh.new()
-		cyl.top_radius = 0.20
-		cyl.bottom_radius = 0.20
-		cyl.height = 0.14
+		cyl.top_radius = 0.30
+		cyl.bottom_radius = 0.30
+		cyl.height = 0.22
 		wheel.mesh = cyl
 		wheel.material_override = wheel_mat
 		wheel.position = offset
@@ -173,10 +194,10 @@ func _build_click_area() -> void:
 	click_area.set_meta("kind", "kart")
 	add_child(click_area)
 	var shape := BoxShape3D.new()
-	shape.size = Vector3(1.4, 1.2, 2.0)
+	shape.size = Vector3(2.0, 2.2, 2.8)
 	var collider := CollisionShape3D.new()
 	collider.shape = shape
-	collider.position = Vector3(0, 0.6, 0)
+	collider.position = Vector3(0, 0.9, 0)
 	click_area.add_child(collider)
 
 

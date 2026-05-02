@@ -35,7 +35,7 @@ const TIER_RACE_DURATION := { 1: 7.0, 2: 8.0, 3: 9.5, 4: 11.0 }
 # Track footprint (in metres of world space).
 const TIER_TRACK_RX := { 1: 14.0, 2: 16.0, 3: 18.0, 4: 20.0 }
 const TIER_TRACK_RZ := { 1: 8.0,  2: 9.0,  3: 10.0, 4: 11.0 }
-const TIER_ASPHALT_WIDTH := { 1: 2.4, 2: 2.7, 3: 3.0, 4: 3.4 }
+const TIER_ASPHALT_WIDTH := { 1: 3.6, 2: 4.0, 3: 4.4, 4: 4.8 }
 const TIER_WAVE_FREQ := { 1: 0, 2: 3, 3: 5, 4: 7 }
 const TIER_WAVE_AMP := { 1: 0.0, 2: 1.1, 3: 1.5, 4: 1.8 }
 const TIER_RIBBON_COLOR := {
@@ -96,6 +96,10 @@ func _ready() -> void:
 		track_level       = int(s.get("track_level", 1))
 		kart_level        = int(s.get("kart_level", 1))
 		initial_kart_count = int(s.get("kart_count", initial_kart_count))
+	# Safety net: a venue with no karts can't earn anything and locks the
+	# player out, so always start with at least the default fleet size.
+	if initial_kart_count <= 0:
+		initial_kart_count = 5
 	SaveManager.track = self
 	add_to_group("track")
 	_build_ground()
@@ -104,6 +108,7 @@ func _ready() -> void:
 	_build_click_area()
 	for i in range(initial_kart_count):
 		_add_kart_node(true)
+	print("[Track] Spawned %d karts on Tier %d Lvl %d" % [karts.size(), track_tier(), track_level])
 	_emit_initial_state()
 	EventBus.day_ended.connect(_on_day_ended)
 
