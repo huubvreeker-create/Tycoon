@@ -23,6 +23,8 @@ signal buy_kart_pressed
 @onready var alert_label: Label          = %AlertLabel
 @onready var alert_timer: Timer          = %AlertTimer
 @onready var event_tag: Label            = %EventTag
+@onready var save_button: Button         = %SaveButton
+@onready var load_button: Button         = %LoadButton
 
 var _venue_name: String = "Hometown Indoor"
 var _track_tier: int = 1
@@ -49,9 +51,21 @@ func _ready() -> void:
 	ticket_plus.pressed.connect(func():  GameManager.bump_ticket_price( GameManager.TICKET_STEP))
 	buy_kart_button.pressed.connect(_on_buy_kart_pressed)
 	alert_timer.timeout.connect(func(): alert_label.text = "")
+	save_button.pressed.connect(func(): SaveManager.save_game())
+	load_button.pressed.connect(func(): SaveManager.load_game())
+	EventBus.game_saved.connect(_on_game_saved)
+	load_button.disabled = not SaveManager.has_save_file()
 
 	_refresh_all()
 	_refresh_buy_button()
+
+	# If we just came back from SaveManager.load_game(), surface the load
+	# confirmation and restore the event tag if an event was active.
+	if SaveManager.just_loaded:
+		SaveManager.just_loaded = false
+		_flash("Loaded Day %d" % GameManager.day, Color(0.13, 0.83, 0.96), 2.5)
+		if not DailyEvents.active_event.is_empty():
+			_show_event_tag(DailyEvents.active_event)
 
 
 func _refresh_all() -> void:
@@ -180,6 +194,12 @@ func _show_event_tag(event: Dictionary) -> void:
 func _on_buy_kart_pressed() -> void:
 	# Open the KART tab in the upgrade panel so the player uses the panel flow.
 	buy_kart_pressed.emit()
+
+
+func _on_game_saved(day: int) -> void:
+	_flash("Saved at Day %d" % day, Color(0.55, 0.92, 0.38), 2.5)
+	if load_button:
+		load_button.disabled = false
 
 
 func _refresh_buy_button() -> void:

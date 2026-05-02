@@ -126,6 +126,16 @@ theme_override_font_sizes/font_size = 16
 [node name="Spacer2" type="Control" parent="TopBar/VBox/Row2"]
 size_flags_horizontal = 3
 
+[node name="SaveButton" type="Button" parent="TopBar/VBox/Row2"]
+unique_name_in_owner = true
+text = "Save  F5"
+custom_minimum_size = Vector2(76, 26)
+
+[node name="LoadButton" type="Button" parent="TopBar/VBox/Row2"]
+unique_name_in_owner = true
+text = "Load  F9"
+custom_minimum_size = Vector2(76, 26)
+
 [node name="DayBox" type="HBoxContainer" parent="TopBar/VBox/Row2"]
 theme_override_constants/separation = 8
 

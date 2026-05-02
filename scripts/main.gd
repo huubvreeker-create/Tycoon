@@ -29,6 +29,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 			_handle_left_click(event.position)
+	elif event is InputEventKey and event.pressed and not event.echo:
+		match event.keycode:
+			KEY_F5:
+				SaveManager.save_game()
+				get_viewport().set_input_as_handled()
+			KEY_F9:
+				SaveManager.load_game()
+				get_viewport().set_input_as_handled()
 
 
 func _handle_left_click(mouse_pos: Vector2) -> void:

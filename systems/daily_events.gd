@@ -126,6 +126,13 @@ func _ready() -> void:
 	EventBus.day_changed.connect(_on_day_changed)
 
 
+func get_event_by_id(id: String) -> Dictionary:
+	for e: Dictionary in _EVENTS:
+		if e.id == id:
+			return e
+	return {}
+
+
 func _on_day_changed(_day: int) -> void:
 	_reset_modifiers()
 	if randf() < TRIGGER_CHANCE:

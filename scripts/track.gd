@@ -89,6 +89,14 @@ var _arrival_timer: float = 0.0
 
 # ---------------------------------------------------------------------------
 func _ready() -> void:
+	# If returning from a load, restore track levels and kart count BEFORE
+	# constructing visuals so we build the right tier from the start.
+	if SaveManager.has_pending_track_state():
+		var s := SaveManager.consume_pending_track_state()
+		track_level       = int(s.get("track_level", 1))
+		kart_level        = int(s.get("kart_level", 1))
+		initial_kart_count = int(s.get("kart_count", initial_kart_count))
+	SaveManager.track = self
 	add_to_group("track")
 	_build_ground()
 	_build_path()
