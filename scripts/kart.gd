@@ -35,7 +35,7 @@ func _process(delta: float) -> void:
 	progress += current_speed() * delta
 	if _flash_time > 0.0:
 		_flash_time -= delta
-		var t := clamp(_flash_time / 0.6, 0.0, 1.0)
+		var t: float = clampf(_flash_time / 0.6, 0.0, 1.0)
 		body_material.emission_enabled = true
 		body_material.emission = _flash_color
 		body_material.emission_energy_multiplier = t * 2.0
@@ -45,7 +45,8 @@ func _process(delta: float) -> void:
 
 
 func tier() -> int:
-	return clamp((level - 1) / LEVELS_PER_TIER + 1, 1, 4)
+	@warning_ignore("integer_division")
+	return clampi((level - 1) / LEVELS_PER_TIER + 1, 1, 4)
 
 
 func current_speed() -> float:
@@ -66,7 +67,7 @@ func set_racing(active: bool) -> void:
 
 
 func set_level(new_level: int) -> void:
-	level = clamp(new_level, 1, 100)
+	level = clampi(new_level, 1, 100)
 	_apply_visuals()
 
 

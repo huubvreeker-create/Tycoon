@@ -131,11 +131,13 @@ func _process(delta: float) -> void:
 
 # --- Public API (used by upgrade popup) ------------------------------------
 func track_tier() -> int:
-	return clamp((track_level - 1) / LEVELS_PER_TIER + 1, 1, 4)
+	@warning_ignore("integer_division")
+	return clampi((track_level - 1) / LEVELS_PER_TIER + 1, 1, 4)
 
 
 func kart_tier() -> int:
-	return clamp((kart_level - 1) / LEVELS_PER_TIER + 1, 1, 4)
+	@warning_ignore("integer_division")
+	return clampi((kart_level - 1) / LEVELS_PER_TIER + 1, 1, 4)
 
 
 func track_level_in_tier() -> int:
@@ -172,7 +174,7 @@ func kart_upgrade_cost() -> int:
 	if not can_upgrade_karts():
 		return -1
 	var per_kart: float = KART_UPGRADE_BASE_COST * pow(KART_UPGRADE_GROWTH, kart_level - 1)
-	return int(round(per_kart * max(karts.size(), 1)))
+	return int(round(per_kart * maxi(karts.size(), 1)))
 
 
 func can_buy_kart() -> bool:
@@ -417,7 +419,7 @@ func _add_kart_node(initial_spawn: bool) -> void:
 
 # --- Customer simulation ---------------------------------------------------
 func _tick_arrivals(delta: float) -> void:
-	var base_interval: float = max(1.6, 4.0 - GameManager.reputation * 0.02)
+	var base_interval: float = maxf(1.6, 4.0 - GameManager.reputation * 0.02)
 	# Marketing staff and daily events scale the arrival interval.
 	var rate := Staff.marketing_arrival_multiplier() * DailyEvents.arrival_multiplier_today
 	var interval: float = base_interval / maxf(rate, 0.1)

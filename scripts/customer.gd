@@ -24,7 +24,7 @@ func _init(rep: int = 0) -> void:
 	id = _next_id
 	spending_power = randf_range(0.75, 1.35)
 	# Reputation makes wealthier customers more common (longer patience too).
-	patience = PATIENCE_BASE + min(rep, 200) * 0.05
+	patience = PATIENCE_BASE + mini(rep, 200) * 0.05
 
 
 func tick_queue(delta: float) -> void:
@@ -44,7 +44,7 @@ func compute_satisfaction(track_tier: int, kart_tier: int, ticket_price: int) ->
 	s += float(kart_tier - 1) * 0.07
 	# Brakes give extra patience → less wait penalty.
 	var effective_patience := patience * (1.0 + KartComponents.brakes_patience_bonus())
-	s -= clamp(wait_time / effective_patience, 0.0, 1.0) * 0.45
+	s -= clampf(wait_time / effective_patience, 0.0, 1.0) * 0.45
 	s -= float(ticket_price - GameManager.TICKET_DEFAULT) / 200.0
 	s += (spending_power - 1.0) * 0.05
 	# Component, facility, staff and daily-event bonuses.
@@ -53,7 +53,7 @@ func compute_satisfaction(track_tier: int, kart_tier: int, ticket_price: int) ->
 	s += Facilities.lounge_satisfaction_bonus()
 	s += Staff.instructor_satisfaction_bonus()
 	s += DailyEvents.satisfaction_bonus_today
-	satisfaction = clamp(s, 0.0, 1.0)
+	satisfaction = clampf(s, 0.0, 1.0)
 	return satisfaction
 
 

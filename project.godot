@@ -41,8 +41,11 @@ pointing/emulate_mouse_from_touch=false
 
 [debug]
 
+gdscript/warnings/treat_warnings_as_errors=false
 gdscript/warnings/unused_signal=0
 gdscript/warnings/integer_division=0
+gdscript/warnings/inference_on_variant=0
+gdscript/warnings/untyped_declaration=0
 
 [rendering]
 

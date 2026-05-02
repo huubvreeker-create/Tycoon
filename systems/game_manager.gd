@@ -39,7 +39,7 @@ func _process(delta: float) -> void:
 
 
 func day_progress() -> float:
-	return clamp(1.0 - (_day_time_left / DAY_LENGTH_SECONDS), 0.0, 1.0)
+	return clampf(1.0 - (_day_time_left / DAY_LENGTH_SECONDS), 0.0, 1.0)
 
 
 func _advance_day() -> void:
@@ -56,7 +56,7 @@ func _advance_day() -> void:
 
 
 func add_reputation(amount: int) -> void:
-	reputation = max(0, reputation + amount)
+	reputation = maxi(0, reputation + amount)
 	EventBus.reputation_changed.emit(reputation)
 
 
@@ -66,7 +66,7 @@ func set_active_customers(count: int) -> void:
 
 
 func set_ticket_price(price: int) -> void:
-	ticket_price = clamp(price, TICKET_MIN, TICKET_MAX)
+	ticket_price = clampi(price, TICKET_MIN, TICKET_MAX)
 	EventBus.ticket_price_changed.emit(ticket_price)
 
 

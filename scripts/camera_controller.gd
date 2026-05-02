@@ -114,8 +114,8 @@ func _pan_with_relative(relative: Vector2) -> void:
 	var local := Vector3(-relative.x, 0, -relative.y) * px_to_world
 	var world_offset := global_transform.basis * local
 	var new_pos := position + Vector3(world_offset.x, 0, world_offset.z)
-	new_pos.x = clamp(new_pos.x, -pan_bounds, pan_bounds)
-	new_pos.z = clamp(new_pos.z, -pan_bounds, pan_bounds)
+	new_pos.x = clampf(new_pos.x, -pan_bounds, pan_bounds)
+	new_pos.z = clampf(new_pos.z, -pan_bounds, pan_bounds)
 	position = new_pos
 
 
