@@ -127,10 +127,12 @@ func _build_cafeteria(parent: Node3D, level: int) -> void:
 	# A real café: main building + covered patio + tables with parasols
 	# + signage on the front.  Sits on the LEFT (-X) side of the venue.
 	var rx := _track_rx()
-	var w: float = 6.0 + level * 0.20
+	var w: float = 5.0 + level * 0.18
 	var d: float = 4.5 + level * 0.16
 	var h: float = 3.0 + level * 0.12
-	var building_pos := Vector3(-rx - 8.0, h * 0.5, 0.0)
+	# Building far enough out that the patio in front of it never touches
+	# the track's rumble strip, even at high facility levels.
+	var building_pos := Vector3(-rx - 12.0 - w * 0.5, h * 0.5, 0.0)
 
 	# Main building.
 	_make_box(parent, Vector3(w, h, d), building_pos, _CAFETERIA_COLOR.darkened(0.55))
@@ -141,7 +143,7 @@ func _build_cafeteria(parent: Node3D, level: int) -> void:
 		Vector3(0.06, 0.40, d * 0.85))
 
 	# Patio in front of the building (between building and track).
-	var patio_d: float = 3.0 + level * 0.10
+	var patio_d: float = 2.5 + level * 0.08
 	var patio_pos: Vector3 = building_pos + Vector3(w * 0.5 + patio_d * 0.5, -h * 0.5 + 0.05, 0)
 	_make_box(parent, Vector3(patio_d, 0.10, d * 0.95),
 		patio_pos, _CAFETERIA_COLOR.darkened(0.7))
@@ -197,7 +199,8 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 	# Pit straight runs along the long axis (X) on the +Z side.
 	var pit_lane_width: float = 2.6 + level * 0.06
 	var pit_lane_length: float = rx * 1.2
-	var pit_lane_z: float = rz + 4.0 + pit_lane_width * 0.5
+	# Sit the pit lane comfortably outside the track's rumble strip.
+	var pit_lane_z: float = rz + 5.0 + pit_lane_width * 0.5
 	# Asphalt
 	_make_box(parent, Vector3(pit_lane_length, 0.08, pit_lane_width),
 		Vector3(0, 0.04, pit_lane_z),
@@ -333,7 +336,8 @@ func _build_merch_shop(parent: Node3D, level: int) -> void:
 	var w: float = 3.5 + level * 0.18
 	var d: float = 3.0 + level * 0.14
 	var h: float = 2.2 + level * 0.10
-	var pos := Vector3(rx + 5.5 + w * 0.3, h * 0.5, 0.0)
+	# Far enough out that the awning in front never touches the track.
+	var pos := Vector3(rx + 8.0 + w * 0.5, h * 0.5, 0.0)
 	_make_box(parent, Vector3(w, h, d), pos, _MERCH_COLOR.darkened(0.55))
 	# Sign band on the side facing the track.
 	_make_label_strip(parent, _MERCH_COLOR,
@@ -346,17 +350,30 @@ func _build_merch_shop(parent: Node3D, level: int) -> void:
 
 
 func _build_sponsor_boards(parent: Node3D, level: int) -> void:
-	# Vertical billboards arranged around the outside of the rumble strip.
+	# Vertical billboards arranged around the outside of the rumble strip,
+	# but ONLY along the long sides (top and bottom of the oval). The
+	# narrow ends (-X cafeteria, +X merch shop) are left clear so they
+	# don't visually merge with the buildings parked there.
 	var board_count := mini(level * 2, 16)
 	var rx := _track_rx() + 1.6
 	var rz := _track_rz() + 1.6
 	var w := 2.6
 	var h := 1.2
-	for i in range(board_count):
-		var t := float(i) / float(board_count) * TAU
-		var x := cos(t) * rx
-		var z := sin(t) * rz
-		var color: Color = _SPONSOR_COLORS[i % _SPONSOR_COLORS.size()]
+	# Distribute boards along the two long arcs only — angle range
+	# 30°..150° (top arc) and 210°..330° (bottom arc), skipping the ends.
+	var per_arc: int = maxi(1, board_count / 2)
+	var positions: Array[Vector2] = []
+	for arc_offset: float in [0.0, PI]:
+		for i in range(per_arc):
+			# Spread evenly across the 120°-wide arc.
+			var local_t: float = (float(i) + 0.5) / float(per_arc)
+			var t: float = arc_offset + PI / 6.0 + local_t * (2.0 * PI / 3.0)
+			positions.append(Vector2(cos(t) * rx, sin(t) * rz))
+	for idx in range(positions.size()):
+		var pos2 := positions[idx]
+		var x: float = pos2.x
+		var z: float = pos2.y
+		var color: Color = _SPONSOR_COLORS[idx % _SPONSOR_COLORS.size()]
 		var board := MeshInstance3D.new()
 		var bm := BoxMesh.new()
 		bm.size = Vector3(w, h, 0.10)
