@@ -58,7 +58,8 @@ script = ExtResource("5_camera_script")
 [node name="Pitch" type="Node3D" parent="CameraRig"]
 
 [node name="Camera3D" type="Camera3D" parent="CameraRig/Pitch"]
-fov = 60.0
+projection = 1
+size = 36.0
 near = 0.5
 far = 200.0
 

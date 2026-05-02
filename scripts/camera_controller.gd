@@ -16,10 +16,12 @@ extends Node3D
 
 signal tapped(screen_pos: Vector2)
 
-@export var pan_speed: float = 0.06
-@export var min_zoom: float = 14.0
+@export var pan_speed: float = 0.05
+# `min_zoom` / `max_zoom` are the ORTHOGONAL camera `size` bounds (the
+# vertical world span the camera shows). Pinch grows / shrinks them.
+@export var min_zoom: float = 18.0
 @export var max_zoom: float = 60.0
-@export var initial_zoom: float = 26.0
+@export var initial_zoom: float = 36.0
 @export var pitch_degrees: float = -55.0
 # Yaw the rig so the track's longer X axis runs down the portrait
 # viewport — uses the screen height for the wider track dimension.
@@ -45,6 +47,13 @@ func _ready() -> void:
 	_zoom_distance = initial_zoom
 	rotation = Vector3(0, deg_to_rad(yaw_degrees), 0)
 	pitch_node.rotation = Vector3(deg_to_rad(pitch_degrees), 0, 0)
+	# Orthogonal projection — no perspective foreshortening, the
+	# closest and farthest edges of the track render at the same
+	# scale (classic tycoon top-down look).
+	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	# Sit the camera reasonably far back so its near/far frustum
+	# comfortably encloses the venue at every zoom level.
+	camera.position = Vector3(0, 0, 60.0)
 	_apply_zoom()
 
 
@@ -96,9 +105,13 @@ func _handle_drag(event: InputEventScreenDrag) -> void:
 # ---------------------------------------------------------------------------
 func _pan_with_relative(relative: Vector2) -> void:
 	# Drag-to-pan: dragging finger right moves world right (under finger).
-	var local := Vector3(-relative.x, 0, -relative.y) * pan_speed
-	# Scale pan with zoom so the world tracks the finger consistently.
-	local *= (_zoom_distance / initial_zoom)
+	# In orthogonal mode pan should match world-units-per-pixel exactly,
+	# so scale by zoom-size / viewport-height.
+	var vp_height: float = float(get_viewport().get_visible_rect().size.y)
+	if vp_height <= 0.0:
+		vp_height = 1280.0
+	var px_to_world: float = _zoom_distance / vp_height
+	var local := Vector3(-relative.x, 0, -relative.y) * px_to_world
 	var world_offset := global_transform.basis * local
 	var new_pos := position + Vector3(world_offset.x, 0, world_offset.z)
 	new_pos.x = clamp(new_pos.x, -pan_bounds, pan_bounds)
@@ -134,4 +147,5 @@ func _apply_pinch() -> void:
 
 
 func _apply_zoom() -> void:
-	camera.position = Vector3(0, 0, _zoom_distance)
+	# In orthogonal mode `size` is the visible vertical world span.
+	camera.size = _zoom_distance

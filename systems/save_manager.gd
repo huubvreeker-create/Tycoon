@@ -225,6 +225,15 @@ func _cold_load() -> void:
 		return
 	var data: Dictionary = parsed
 	_deserialize(data)
+	# Rescue: a save with no karts and negative cash is a stuck state
+	# (the venue can't earn, expenses keep accruing). Reset the player's
+	# cash to the starting bankroll so they can climb out — Track's own
+	# spawn safety net will refill the fleet.
+	var saved_kart_count: int = int((data.get("track", {}) as Dictionary).get("kart_count", 0))
+	if saved_kart_count <= 0 and EconomyManager.cash < EconomyManager.STARTING_CASH:
+		EconomyManager.cash = EconomyManager.STARTING_CASH
+		EventBus.cash_changed.emit(EconomyManager.cash)
+		print("[SaveManager] Detected broken save (0 karts, low cash) — restored starting cash.")
 	# Compute offline progress against the SAVED snapshot (the live Track
 	# isn't in the scene yet — its _ready runs after this autoload).
 	if data.has("save_timestamp") and data.has("track"):
