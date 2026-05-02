@@ -28,42 +28,62 @@ var front_wing_material: StandardMaterial3D
 var beacon_material: StandardMaterial3D
 var wheel_material: StandardMaterial3D
 
+# Tier-specific extras — created once, shown / hidden per tier.
+var side_pod_left: MeshInstance3D
+var side_pod_right: MeshInstance3D
+var side_pod_material: StandardMaterial3D
+var engine_block: MeshInstance3D
+var engine_material: StandardMaterial3D
+var steering_column: MeshInstance3D
+var steering_material: StandardMaterial3D
+var nose_cone: MeshInstance3D
+var nose_material: StandardMaterial3D
+
 var _flash_time: float = 0.0
 var _flash_color: Color = Color.WHITE
 
 
 # ---------------------------------------------------------------------------
 # Tier-specific visual recipes. Each entry is the look at that tier.
-# Vehicles get LONGER / LOWER / NARROWER as they progress (F1 silhouette);
-# spoilers + wings get bigger; wheels get larger and more exposed.
+# Progression intent:
+#   Tier 1  – mini kart (open chassis platform, side pods, exposed seat)
+#   Tier 2  – cadet kart (slightly bigger pods + small spoiler)
+#   Tier 3  – shifter kart (longer wheelbase, taller engine block)
+#   Tier 4  – superkart (front nose appears, bigger spoiler)
+#   Tier 5  – junior open-wheel (no engine block, dedicated front wing)
+#   Tier 6  – F4-style regional formula
+#   Tier 7  – IndyCar (longer, oval-track aero, no halo)
+#   Tier 8  – F3 (halo appears, modern formula proportions)
+#   Tier 9  – F2 (bigger wings, F1-adjacent silhouette)
+#   Tier 10 – F1 (full spec, longest body, biggest wings)
 # ---------------------------------------------------------------------------
-# 10-tier kart silhouettes — gradual evolution from squat kid-kart to
-# full F1 over ten visible steps. Body LOWER, NARROWER, LONGER as tier
-# climbs; spoilers + front wings appear and grow; wheels get bigger
-# and pushed wider apart.
+
+# Body chassis. Tier 1-3 are kart-thin platforms; tier 4 starts to grow
+# into an open-wheel monocoque; tier 7-10 stretches into a full
+# formula-car body.
 const _BODY_SIZE := {
-	 1: Vector3(0.95, 0.30, 1.4),
-	 2: Vector3(0.95, 0.30, 1.6),
-	 3: Vector3(0.95, 0.28, 1.9),
-	 4: Vector3(0.95, 0.28, 2.2),
-	 5: Vector3(0.92, 0.26, 2.6),
-	 6: Vector3(0.90, 0.24, 2.9),
-	 7: Vector3(0.88, 0.22, 3.2),
-	 8: Vector3(0.85, 0.22, 3.5),
-	 9: Vector3(0.85, 0.20, 3.8),
-	10: Vector3(0.82, 0.18, 4.2),
+	 1: Vector3(0.70, 0.08, 1.05),
+	 2: Vector3(0.72, 0.10, 1.30),
+	 3: Vector3(0.75, 0.12, 1.65),
+	 4: Vector3(0.82, 0.16, 2.10),
+	 5: Vector3(0.90, 0.20, 2.55),
+	 6: Vector3(0.90, 0.22, 2.90),
+	 7: Vector3(0.88, 0.22, 3.30),
+	 8: Vector3(0.85, 0.20, 3.55),
+	 9: Vector3(0.82, 0.18, 3.85),
+	10: Vector3(0.80, 0.16, 4.20),
 }
 const _BODY_Y := {
-	1: 0.36, 2: 0.36, 3: 0.34, 4: 0.32, 5: 0.30,
-	6: 0.28, 7: 0.26, 8: 0.25, 9: 0.24, 10: 0.22
+	1: 0.18, 2: 0.20, 3: 0.22, 4: 0.26, 5: 0.30,
+	6: 0.30, 7: 0.28, 8: 0.26, 9: 0.24, 10: 0.22
 }
 
 const _COCKPIT_SIZE := {
-	 1: Vector3(0.50, 0.26, 0.55),
-	 2: Vector3(0.52, 0.28, 0.60),
-	 3: Vector3(0.55, 0.30, 0.65),
-	 4: Vector3(0.55, 0.30, 0.70),
-	 5: Vector3(0.55, 0.32, 0.75),
+	 1: Vector3(0.38, 0.20, 0.42),
+	 2: Vector3(0.42, 0.22, 0.48),
+	 3: Vector3(0.45, 0.24, 0.55),
+	 4: Vector3(0.50, 0.28, 0.62),
+	 5: Vector3(0.55, 0.32, 0.72),
 	 6: Vector3(0.55, 0.32, 0.78),
 	 7: Vector3(0.55, 0.32, 0.78),
 	 8: Vector3(0.52, 0.32, 0.75),
@@ -71,24 +91,95 @@ const _COCKPIT_SIZE := {
 	10: Vector3(0.48, 0.30, 0.68),
 }
 const _COCKPIT_OFFSET := {
-	 1: Vector3(0, 0.55, 0.15),
-	 2: Vector3(0, 0.58, 0.18),
-	 3: Vector3(0, 0.60, 0.22),
-	 4: Vector3(0, 0.60, 0.30),
-	 5: Vector3(0, 0.60, 0.40),
-	 6: Vector3(0, 0.58, 0.48),
-	 7: Vector3(0, 0.56, 0.55),
-	 8: Vector3(0, 0.54, 0.60),
+	 1: Vector3(0, 0.36, 0.05),
+	 2: Vector3(0, 0.40, 0.10),
+	 3: Vector3(0, 0.46, 0.18),
+	 4: Vector3(0, 0.50, 0.28),
+	 5: Vector3(0, 0.55, 0.38),
+	 6: Vector3(0, 0.58, 0.46),
+	 7: Vector3(0, 0.56, 0.52),
+	 8: Vector3(0, 0.54, 0.58),
 	 9: Vector3(0, 0.52, 0.62),
 	10: Vector3(0, 0.50, 0.65),
 }
 
+# Side pods — mini-kart fairings on tier 1-3, then aerodynamic body
+# panels on tier 4+. ALL tiers have them so the silhouette never goes
+# back to a bare box.
+const _SIDE_POD_SIZE := {
+	 1: Vector3(0.20, 0.16, 0.80),
+	 2: Vector3(0.22, 0.18, 0.95),
+	 3: Vector3(0.24, 0.20, 1.15),
+	 4: Vector3(0.26, 0.22, 1.45),
+	 5: Vector3(0.28, 0.24, 1.75),
+	 6: Vector3(0.30, 0.26, 1.95),
+	 7: Vector3(0.30, 0.26, 2.15),
+	 8: Vector3(0.28, 0.26, 2.35),
+	 9: Vector3(0.28, 0.26, 2.55),
+	10: Vector3(0.28, 0.24, 2.75),
+}
+const _SIDE_POD_X := {
+	1: 0.42, 2: 0.44, 3: 0.46, 4: 0.50, 5: 0.55,
+	6: 0.58, 7: 0.60, 8: 0.62, 9: 0.64, 10: 0.66
+}
+const _SIDE_POD_Y := {
+	1: 0.20, 2: 0.22, 3: 0.24, 4: 0.30, 5: 0.34,
+	6: 0.34, 7: 0.32, 8: 0.30, 9: 0.28, 10: 0.26
+}
+
+# Exposed engine block — small, visible only on tier 1-4 (real karts +
+# superkart). Disappears once we move into formula-style rear bodywork.
+const _ENGINE_VISIBLE_TIERS: int = 4
+const _ENGINE_SIZE := {
+	1: Vector3(0.30, 0.28, 0.38),
+	2: Vector3(0.32, 0.30, 0.45),
+	3: Vector3(0.34, 0.32, 0.52),
+	4: Vector3(0.30, 0.28, 0.50),
+}
+const _ENGINE_OFFSET := {
+	1: Vector3(0.32, 0.30, 0.40),
+	2: Vector3(0.34, 0.32, 0.50),
+	3: Vector3(0.34, 0.34, 0.65),
+	4: Vector3(0.32, 0.34, 0.80),
+}
+
+# Steering column — thin cylinder rising from the cockpit floor on
+# tier 1-3 only (real karts have an exposed steering shaft).
+const _STEERING_VISIBLE_TIERS: int = 3
+const _STEERING_HEIGHT := {1: 0.40, 2: 0.42, 3: 0.42}
+
+# Nose cone — appears on tier 4 (superkart) onwards.
+const _NOSE_VISIBLE_FROM_TIER: int = 4
+const _NOSE_SIZE := {
+	 4: Vector3(0.34, 0.10, 0.55),
+	 5: Vector3(0.40, 0.10, 0.70),
+	 6: Vector3(0.45, 0.12, 0.85),
+	 7: Vector3(0.55, 0.14, 1.05),
+	 8: Vector3(0.55, 0.14, 1.18),
+	 9: Vector3(0.55, 0.14, 1.30),
+	10: Vector3(0.55, 0.14, 1.50),
+}
+const _NOSE_OFFSET := {
+	 4: Vector3(0, 0.18, -0.85),
+	 5: Vector3(0, 0.18, -1.00),
+	 6: Vector3(0, 0.18, -1.15),
+	 7: Vector3(0, 0.18, -1.30),
+	 8: Vector3(0, 0.18, -1.40),
+	 9: Vector3(0, 0.18, -1.50),
+	10: Vector3(0, 0.18, -1.65),
+}
+
+# Rear spoilers / wings appear on tier 2; front wings on tier 5
+# (replacing the bare nose cone). Halo arrives at tier 8 (F3+).
+const _SPOILER_VISIBLE_FROM_TIER: int = 2
+const _FRONT_WING_VISIBLE_FROM_TIER: int = 5
+const _HALO_VISIBLE_FROM_TIER: int = 8
+
 const _SPOILER_SIZE := {
-	 1: Vector3.ZERO,
-	 2: Vector3(0.75, 0.20, 0.10),
-	 3: Vector3(0.85, 0.28, 0.14),
-	 4: Vector3(0.95, 0.34, 0.16),
-	 5: Vector3(1.05, 0.42, 0.18),
+	 2: Vector3(0.70, 0.18, 0.10),
+	 3: Vector3(0.80, 0.24, 0.12),
+	 4: Vector3(0.95, 0.32, 0.16),
+	 5: Vector3(1.05, 0.40, 0.18),
 	 6: Vector3(1.15, 0.46, 0.20),
 	 7: Vector3(1.20, 0.50, 0.20),
 	 8: Vector3(1.25, 0.54, 0.22),
@@ -96,23 +187,18 @@ const _SPOILER_SIZE := {
 	10: Vector3(1.35, 0.62, 0.22),
 }
 const _SPOILER_OFFSET := {
-	 1: Vector3.ZERO,
-	 2: Vector3(0, 0.60, 0.65),
-	 3: Vector3(0, 0.65, 0.85),
-	 4: Vector3(0, 0.75, 1.00),
-	 5: Vector3(0, 0.82, 1.18),
-	 6: Vector3(0, 0.88, 1.35),
-	 7: Vector3(0, 0.92, 1.50),
-	 8: Vector3(0, 0.95, 1.62),
-	 9: Vector3(0, 1.00, 1.75),
+	 2: Vector3(0, 0.55, 0.55),
+	 3: Vector3(0, 0.62, 0.78),
+	 4: Vector3(0, 0.72, 1.00),
+	 5: Vector3(0, 0.82, 1.20),
+	 6: Vector3(0, 0.88, 1.40),
+	 7: Vector3(0, 0.92, 1.55),
+	 8: Vector3(0, 0.95, 1.65),
+	 9: Vector3(0, 1.00, 1.78),
 	10: Vector3(0, 1.05, 1.95),
 }
 
 const _FRONT_WING_SIZE := {
-	 1: Vector3.ZERO,
-	 2: Vector3.ZERO,
-	 3: Vector3(0.85, 0.08, 0.22),
-	 4: Vector3(0.95, 0.08, 0.26),
 	 5: Vector3(1.05, 0.10, 0.30),
 	 6: Vector3(1.15, 0.10, 0.34),
 	 7: Vector3(1.20, 0.10, 0.38),
@@ -121,50 +207,46 @@ const _FRONT_WING_SIZE := {
 	10: Vector3(1.45, 0.10, 0.50),
 }
 const _FRONT_WING_OFFSET := {
-	 1: Vector3.ZERO,
-	 2: Vector3.ZERO,
-	 3: Vector3(0, 0.18, -1.00),
-	 4: Vector3(0, 0.16, -1.15),
-	 5: Vector3(0, 0.16, -1.32),
-	 6: Vector3(0, 0.15, -1.50),
-	 7: Vector3(0, 0.15, -1.65),
+	 5: Vector3(0, 0.14, -1.32),
+	 6: Vector3(0, 0.14, -1.50),
+	 7: Vector3(0, 0.14, -1.65),
 	 8: Vector3(0, 0.14, -1.78),
 	 9: Vector3(0, 0.14, -1.90),
 	10: Vector3(0, 0.13, -2.10),
 }
 
 const _WHEEL_RADIUS := {
-	1: 0.18, 2: 0.19, 3: 0.21, 4: 0.23, 5: 0.25,
+	1: 0.16, 2: 0.18, 3: 0.20, 4: 0.22, 5: 0.25,
 	6: 0.27, 7: 0.29, 8: 0.30, 9: 0.31, 10: 0.34
 }
 const _WHEEL_HEIGHT := {
-	1: 0.14, 2: 0.15, 3: 0.16, 4: 0.17, 5: 0.18,
+	1: 0.13, 2: 0.14, 3: 0.15, 4: 0.16, 5: 0.18,
 	6: 0.19, 7: 0.20, 8: 0.21, 9: 0.22, 10: 0.24
 }
 const _WHEEL_X := {
-	1: 0.55, 2: 0.58, 3: 0.61, 4: 0.64, 5: 0.66,
+	1: 0.50, 2: 0.54, 3: 0.58, 4: 0.62, 5: 0.66,
 	6: 0.68, 7: 0.70, 8: 0.72, 9: 0.73, 10: 0.74
 }
 const _WHEEL_Z := {
-	1: 0.55, 2: 0.62, 3: 0.78, 4: 0.92, 5: 1.05,
+	1: 0.45, 2: 0.55, 3: 0.72, 4: 0.90, 5: 1.05,
 	6: 1.18, 7: 1.30, 8: 1.40, 9: 1.50, 10: 1.65
 }
 
 const _BEACON_SIZE := {
-	 1: Vector3(0.45, 0.45, 0.45),
-	 2: Vector3(0.42, 0.40, 0.42),
-	 3: Vector3(0.38, 0.32, 0.38),
-	 4: Vector3(0.34, 0.24, 0.34),
-	 5: Vector3(0.30, 0.20, 0.30),
-	 6: Vector3(0.28, 0.18, 0.28),
-	 7: Vector3(0.26, 0.16, 0.26),
-	 8: Vector3(0.25, 0.14, 0.25),
-	 9: Vector3(0.24, 0.13, 0.24),
-	10: Vector3(0.22, 0.11, 0.22),
+	 1: Vector3(0.30, 0.30, 0.30),
+	 2: Vector3(0.30, 0.28, 0.30),
+	 3: Vector3(0.32, 0.24, 0.32),
+	 4: Vector3(0.30, 0.20, 0.30),
+	 5: Vector3(0.28, 0.18, 0.28),
+	 6: Vector3(0.26, 0.16, 0.26),
+	 7: Vector3(0.24, 0.14, 0.24),
+	 8: Vector3(0.22, 0.12, 0.22),
+	 9: Vector3(0.20, 0.11, 0.20),
+	10: Vector3(0.18, 0.10, 0.18),
 }
 const _BEACON_Y := {
-	1: 1.10, 2: 1.08, 3: 1.00, 4: 0.92, 5: 0.85,
-	6: 0.80, 7: 0.76, 8: 0.74, 9: 0.72, 10: 0.68
+	1: 0.42, 2: 0.46, 3: 0.55, 4: 0.65, 5: 0.78,
+	6: 0.84, 7: 0.82, 8: 0.78, 9: 0.74, 10: 0.70
 }
 
 
@@ -214,8 +296,10 @@ func _tier_progress() -> float:
 
 func _lerp_v3_table(table: Dictionary) -> Vector3:
 	var t: int = tier()
+	if not table.has(t):
+		return Vector3.ZERO
 	var base_v: Vector3 = table[t]
-	if t >= TIER_LEVEL_CAPS.size():
+	if not table.has(t + 1):
 		return base_v
 	var next_v: Vector3 = table[t + 1]
 	return base_v.lerp(next_v, _tier_progress())
@@ -223,8 +307,10 @@ func _lerp_v3_table(table: Dictionary) -> Vector3:
 
 func _lerp_f_table(table: Dictionary) -> float:
 	var t: int = tier()
+	if not table.has(t):
+		return 0.0
 	var base_v: float = float(table[t])
-	if t >= TIER_LEVEL_CAPS.size():
+	if not table.has(t + 1):
 		return base_v
 	var next_v: float = float(table[t + 1])
 	return lerpf(base_v, next_v, _tier_progress())
@@ -276,14 +362,35 @@ func _build_meshes() -> void:
 	front_wing_material = _make_simple_material(kart_color.darkened(0.15), 0.45)
 	beacon_material = _make_emissive_material(kart_color.lightened(0.25), kart_color, 1.6)
 	wheel_material = _make_simple_material(Color(0.08, 0.08, 0.10), 0.8)
+	side_pod_material = _make_simple_material(kart_color, 0.45)
+	engine_material = _make_simple_material(Color(0.18, 0.18, 0.20), 0.7)
+	steering_material = _make_simple_material(Color(0.12, 0.12, 0.14), 0.7)
+	nose_material = _make_simple_material(kart_color.darkened(0.10), 0.45)
 
 	body_mesh = _make_box_mesh("Body", Vector3.ONE, body_material)
 	cockpit_mesh = _make_box_mesh("Cockpit", Vector3.ONE, cockpit_material)
 	spoiler_mesh = _make_box_mesh("Spoiler", Vector3.ONE, spoiler_material)
 	front_wing_mesh = _make_box_mesh("FrontWing", Vector3.ONE, front_wing_material)
 	beacon_mesh = _make_box_mesh("Beacon", Vector3.ONE, beacon_material)
+	side_pod_left = _make_box_mesh("SidePodLeft", Vector3.ONE, side_pod_material)
+	side_pod_right = _make_box_mesh("SidePodRight", Vector3.ONE, side_pod_material)
+	engine_block = _make_box_mesh("EngineBlock", Vector3.ONE, engine_material)
+	nose_cone = _make_box_mesh("NoseCone", Vector3.ONE, nose_material)
 
-	# Halo (tier 4 cosmetic) — torus around the cockpit area.
+	# Steering column — thin angled cylinder on tier 1-3 only.
+	steering_column = MeshInstance3D.new()
+	steering_column.name = "SteeringColumn"
+	var sc := CylinderMesh.new()
+	sc.top_radius = 0.018
+	sc.bottom_radius = 0.022
+	sc.height = 0.40
+	steering_column.mesh = sc
+	steering_column.material_override = steering_material
+	# Tilted slightly forward so it looks like a real kart steering shaft.
+	steering_column.rotation = Vector3(deg_to_rad(15), 0, 0)
+	add_child(steering_column)
+
+	# Halo — torus around the cockpit, formula-tier cosmetic only.
 	halo_mesh = MeshInstance3D.new()
 	halo_mesh.name = "Halo"
 	var halo := TorusMesh.new()
@@ -360,8 +467,47 @@ func _apply_visuals() -> void:
 	cockpit_mesh.position = _lerp_v3_table(_COCKPIT_OFFSET)
 	cockpit_material.albedo_color = kart_color.darkened(0.45)
 
-	# --- Rear spoiler — appears from tier 2 and grows continuously. ---
-	if t >= 2:
+	# --- Side pods (mini-kart fairings → F1 sidepods, all tiers) ---
+	var pod_size: Vector3 = _lerp_v3_table(_SIDE_POD_SIZE)
+	var pod_x: float = _lerp_f_table(_SIDE_POD_X)
+	var pod_y: float = _lerp_f_table(_SIDE_POD_Y)
+	(side_pod_left.mesh as BoxMesh).size = pod_size
+	side_pod_left.position = Vector3(-pod_x, pod_y, 0)
+	(side_pod_right.mesh as BoxMesh).size = pod_size
+	side_pod_right.position = Vector3(pod_x, pod_y, 0)
+	side_pod_material.albedo_color = kart_color
+
+	# --- Exposed engine block (mini-kart era only, tiers 1-4) ---
+	if t <= _ENGINE_VISIBLE_TIERS:
+		engine_block.visible = true
+		(engine_block.mesh as BoxMesh).size = _lerp_v3_table(_ENGINE_SIZE)
+		engine_block.position = _lerp_v3_table(_ENGINE_OFFSET)
+	else:
+		engine_block.visible = false
+
+	# --- Steering column (real-kart era only, tiers 1-3) ---
+	if t <= _STEERING_VISIBLE_TIERS:
+		steering_column.visible = true
+		var col_h: float = _lerp_f_table(_STEERING_HEIGHT)
+		(steering_column.mesh as CylinderMesh).height = col_h
+		# Position the column rising out of the cockpit floor.
+		var ck_offset: Vector3 = _lerp_v3_table(_COCKPIT_OFFSET)
+		steering_column.position = Vector3(0, ck_offset.y + col_h * 0.5,
+			ck_offset.z - 0.15)
+	else:
+		steering_column.visible = false
+
+	# --- Nose cone (superkart → F1, tiers 4+) ---
+	if t >= _NOSE_VISIBLE_FROM_TIER:
+		nose_cone.visible = true
+		(nose_cone.mesh as BoxMesh).size = _lerp_v3_table(_NOSE_SIZE)
+		nose_cone.position = _lerp_v3_table(_NOSE_OFFSET)
+		nose_material.albedo_color = kart_color.darkened(0.10)
+	else:
+		nose_cone.visible = false
+
+	# --- Rear spoiler — from tier 2 ---
+	if t >= _SPOILER_VISIBLE_FROM_TIER:
 		spoiler_mesh.visible = true
 		(spoiler_mesh.mesh as BoxMesh).size = _lerp_v3_table(_SPOILER_SIZE)
 		spoiler_mesh.position = _lerp_v3_table(_SPOILER_OFFSET)
@@ -369,8 +515,8 @@ func _apply_visuals() -> void:
 	else:
 		spoiler_mesh.visible = false
 
-	# --- Front wing (F1 territory) ---
-	if t >= 3:
+	# --- Front wing (junior open-wheel onwards, tier 5+) ---
+	if t >= _FRONT_WING_VISIBLE_FROM_TIER:
 		front_wing_mesh.visible = true
 		(front_wing_mesh.mesh as BoxMesh).size = _lerp_v3_table(_FRONT_WING_SIZE)
 		front_wing_mesh.position = _lerp_v3_table(_FRONT_WING_OFFSET)
@@ -378,8 +524,8 @@ func _apply_visuals() -> void:
 	else:
 		front_wing_mesh.visible = false
 
-	# --- Halo (F1-style safety device) — appears at tier 8 and stays. ---
-	if t >= 8:
+	# --- Halo (F3+ safety device, tier 8+) ---
+	if t >= _HALO_VISIBLE_FROM_TIER:
 		halo_mesh.visible = true
 		halo_mesh.position = _lerp_v3_table(_COCKPIT_OFFSET) + Vector3(0, 0.45, 0)
 	else:
