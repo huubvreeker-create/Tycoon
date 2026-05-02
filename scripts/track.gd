@@ -60,7 +60,7 @@ const TIER_RACE_DURATION := {
 # the start/finish straight on the +Z side is FIXED across all tiers.
 # Only the south loop (the rest of the circuit) grows and gains
 # corners as the player tiers up.
-const STRAIGHT_HALF: float = 14.0      # half-length of main straight (= 28 m total — fits 12 garages)
+const STRAIGHT_HALF: float = 18.0      # half-length of main straight (= 36 m total — comfortably fits 14 garages with margin)
 const STRAIGHT_Z: float = 9.0          # z-coord of the straight (north of origin)
 
 # Per-tier south LOOP. Loop endpoints on the north side are at
@@ -70,8 +70,8 @@ const STRAIGHT_Z: float = 9.0          # z-coord of the straight (north of origi
 # circuit. Each tier adds at least 4 m of loop_rx and depth so the
 # extra corners have real space to spread out into.
 const TIER_LOOP_RX := {
-	1: 18.0, 2: 22.0, 3: 27.0, 4: 33.0, 5: 40.0,
-	6: 48.0, 7: 56.0, 8: 64.0, 9: 72.0, 10: 80.0
+	1: 22.0, 2: 26.0, 3: 31.0, 4: 37.0, 5: 44.0,
+	6: 52.0, 7: 60.0, 8: 68.0, 9: 76.0, 10: 84.0
 }
 const TIER_LOOP_DEPTH := {
 	1: 14.0, 2: 19.0, 3: 25.0, 4: 32.0, 5: 40.0,
@@ -83,8 +83,8 @@ const TIER_LOOP_DEPTH := {
 # The new asymmetric helpers (north_extent_z / south_extent_z) on
 # the API expose the proper north/south extents separately.
 const TIER_TRACK_RX := {
-	1: 18.0, 2: 22.0, 3: 27.0, 4: 33.0, 5: 40.0,
-	6: 48.0, 7: 56.0, 8: 64.0, 9: 72.0, 10: 80.0
+	1: 22.0, 2: 26.0, 3: 31.0, 4: 37.0, 5: 44.0,
+	6: 52.0, 7: 60.0, 8: 68.0, 9: 76.0, 10: 84.0
 }
 const TIER_TRACK_RZ := {
 	1: 14.0, 2: 19.0, 3: 25.0, 4: 32.0, 5: 40.0,
@@ -286,13 +286,13 @@ const MAX_LEVEL: int = 450
 # isn't a sprint. Player needs to actually grind a few customer cycles
 # before each upgrade. End-game cumulative still reaches the
 # multi-quintillion range thanks to compounding 1.10 growth per level.
-const TRACK_UPGRADE_BASE_COST: float = 250.0
-const TRACK_UPGRADE_GROWTH: float = 1.10
-const KART_UPGRADE_BASE_COST: float = 100.0
-const KART_UPGRADE_GROWTH: float = 1.10
+const TRACK_UPGRADE_BASE_COST: float = 200.0
+const TRACK_UPGRADE_GROWTH: float = 1.08
+const KART_UPGRADE_BASE_COST: float = 80.0
+const KART_UPGRADE_GROWTH: float = 1.08
 const BUY_KART_BASE_COST: float = 800.0
 const BUY_KART_LEVEL_FACTOR: float = 50.0
-const BUY_KART_FLEET_GROWTH: float = 1.22
+const BUY_KART_FLEET_GROWTH: float = 1.18
 
 const PATH_SEGMENTS: int = 96
 const ASPHALT_DEPTH: float = 0.12
@@ -458,7 +458,32 @@ func kart_capacity() -> int:
 
 
 func can_upgrade_track() -> bool:
-	return track_level < MAX_LEVEL
+	# Track upgrade is BLOCKED if any kart component is more than
+	# 50 levels behind the track. Forces the player to keep their
+	# fleet's subsystems within range of the venue's tier — no more
+	# track-level-364 with brakes-level-5 imbalances. The first 50
+	# track levels have no component requirement so the early game
+	# never feels stuck.
+	if track_level >= MAX_LEVEL:
+		return false
+	var required_min_component: int = maxi(0, track_level - 50)
+	if KartComponents.min_component_level() < required_min_component:
+		return false
+	return true
+
+
+func track_upgrade_block_reason() -> String:
+	# Human-readable reason if can_upgrade_track() returned false.
+	# UI can surface this so the player knows what to upgrade.
+	if track_level >= MAX_LEVEL:
+		return "Track at MAX level"
+	var required_min_component: int = maxi(0, track_level - 50)
+	var weakest: int = KartComponents.min_component_level()
+	if weakest < required_min_component:
+		return "Karts need upgrades — weakest component must reach lvl %d (now %d)" % [
+			required_min_component, weakest
+		]
+	return ""
 
 
 func track_upgrade_cost() -> int:

@@ -1,12 +1,19 @@
 extends Node
 ##
 ## Upgradeable kart component sub-systems.
-## Each component has levels 1-50, with exponentially scaling costs and
-## concrete mechanical / economic effects used by Track and Customer.
+## Each component has levels 1..MAX_LEVEL with exponentially scaling
+## costs and concrete mechanical / economic effects used by Track and
+## Customer.
+##
+## Components are GATED by the current track tier — you can only
+## upgrade a component up to TIER_LEVEL_CAPS[track_tier - 1]. This
+## stops the player from running a tier-10 venue with brakes still
+## at level 5: progressing the track forces matching investments in
+## the individual kart subsystems.
 ##
 
-const MAX_LEVEL: int = 100
-const COST_GROWTH: float = 1.10
+const MAX_LEVEL: int = 450
+const COST_GROWTH: float = 1.08
 
 const _BASE_COST := {
 	"engine":  350.0,
@@ -41,25 +48,30 @@ var brakes_level:  int = 1
 
 # --- Effects ----------------------------------------------------------------
 func engine_speed_bonus() -> float:
-	return (engine_level - 1) * 0.15
+	return (engine_level - 1) * 0.05
 
 func engine_revenue_multiplier() -> float:
-	# Compounds: +1.5% per level → 4.4× at level 100, 800× at level 450
-	return pow(1.015, float(engine_level - 1))
+	# Compounds: +1.2% per level → ~3.2× at level 100, 195× at level 450.
+	# Tuned to stay slightly behind the 1.08/level cost growth so each
+	# tier feels like a marathon — but the marathon never stalls.
+	return pow(1.012, float(engine_level - 1))
 
 func tires_satisfaction_bonus() -> float:
-	return (tires_level - 1) * 0.003
+	# +0.1% per level, capped at +45% at MAX_LEVEL.
+	return minf(0.45, (tires_level - 1) * 0.001)
 
 func chassis_maintenance_multiplier() -> float:
-	return maxf(0.3, 1.0 - (chassis_level - 1) * 0.006)
+	# Smooth ramp to 30% maintenance cost at MAX_LEVEL.
+	return maxf(0.30, 1.0 - (chassis_level - 1) * 0.0016)
 
 func suit_reputation_bonus() -> int:
-	# +1 reputation per race for every 10 suit levels (level 11 = 1, 21 = 2, ...)
+	# +1 reputation per race for every 25 suit levels (level 26 = 1, 51 = 2, …).
 	@warning_ignore("integer_division")
-	return (suit_level - 1) / 10
+	return (suit_level - 1) / 25
 
 func brakes_patience_bonus() -> float:
-	return (brakes_level - 1) * 0.005
+	# +0.13% patience per level, capped at +60%.
+	return minf(0.60, (brakes_level - 1) * 0.0013)
 
 
 # --- API --------------------------------------------------------------------
@@ -81,8 +93,28 @@ func get_level(component: String) -> int:
 		"brakes":  return brakes_level
 	return 0
 
+
+func min_component_level() -> int:
+	# Lowest level across all 5 subsystems. Used by Track to gate
+	# track upgrades behind balanced component progression.
+	return mini(mini(mini(mini(engine_level, tires_level), chassis_level),
+		suit_level), brakes_level)
+
+func current_tier_cap() -> int:
+	# Component upgrades are capped by the current track tier — you
+	# can't field tier-10 brakes on a tier-3 venue. Mirrors the way
+	# facilities are gated, but using the level cap of the track's
+	# CURRENT tier rather than a flat tier requirement.
+	if SaveManager.track == null:
+		return MAX_LEVEL
+	var t: int = SaveManager.track.track_tier()
+	var caps: Array = SaveManager.track.TIER_LEVEL_CAPS
+	if t - 1 < 0 or t - 1 >= caps.size():
+		return MAX_LEVEL
+	return mini(int(caps[t - 1]), MAX_LEVEL)
+
 func can_upgrade(component: String) -> bool:
-	return get_level(component) < MAX_LEVEL
+	return get_level(component) < mini(MAX_LEVEL, current_tier_cap())
 
 func upgrade_cost(component: String) -> int:
 	var lv := get_level(component)

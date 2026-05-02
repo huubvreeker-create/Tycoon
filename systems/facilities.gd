@@ -5,7 +5,7 @@ extends Node
 ##
 
 const MAX_LEVEL: int = 100
-const COST_GROWTH: float = 1.10
+const COST_GROWTH: float = 1.08
 
 const _BUILD_COST := {
 	"cafeteria":    1500.0,
@@ -71,8 +71,9 @@ var marketing_level:      int = 0
 
 # --- Effects ----------------------------------------------------------------
 func cafeteria_revenue_per_customer() -> float:
-	# Compounds: doubles every ~30 levels.
-	return cafeteria_level * 3.0 * pow(1.025, float(cafeteria_level))
+	# Compounds: doubles every ~25 levels — late-game cafeteria scales
+	# with the customer firehose so it stays relevant.
+	return cafeteria_level * 4.0 * pow(1.030, float(cafeteria_level))
 
 func cafeteria_satisfaction_bonus() -> float:
 	return minf(0.30, cafeteria_level * 0.003)
@@ -86,7 +87,7 @@ func pit_lane_maintenance_multiplier() -> float:
 
 func pit_lane_daily_income() -> int:
 	# Pit operations + paddock services bring in steady cash.
-	return int(round(40.0 * pit_lane_level * pow(1.04, float(pit_lane_level))))
+	return int(round(60.0 * pit_lane_level * pow(1.05, float(pit_lane_level))))
 
 func lounge_satisfaction_bonus() -> float:
 	return minf(0.40, lounge_level * 0.005)
@@ -97,26 +98,29 @@ func lounge_reputation_per_race() -> int:
 	return lounge_level / 4
 
 func lounge_daily_income() -> int:
-	# VIP membership + corporate hospitality fees.
-	return int(round(80.0 * lounge_level * pow(1.045, float(lounge_level))))
+	# VIP membership + corporate hospitality fees — biggest single
+	# passive earner once levelled.
+	return int(round(120.0 * lounge_level * pow(1.055, float(lounge_level))))
 
 func merch_daily_income() -> int:
 	# Compounds — endgame merch shop is a major income source.
-	return int(round(50.0 * merch_shop_level * pow(1.04, float(merch_shop_level))))
+	return int(round(75.0 * merch_shop_level * pow(1.05, float(merch_shop_level))))
 
 func sponsor_daily_income() -> int:
-	return int(round(30.0 * sponsor_boards_level * pow(1.04, float(sponsor_boards_level))))
+	# Each sponsor board upgrade brings in noticeable extra cash even
+	# though the on-track count is capped (boards just grow bigger).
+	return int(round(50.0 * sponsor_boards_level * pow(1.05, float(sponsor_boards_level))))
 
 func lighting_revenue_multiplier() -> float:
-	# Compounds: +1% per level, multiplicative with engine.
-	return pow(1.01, float(lighting_level))
+	# Compounds: +1.2% per level, multiplicative with engine.
+	return pow(1.012, float(lighting_level))
 
 func lighting_daily_income() -> int:
 	# Night-event ticket premium / floodlit extra hours.
-	return int(round(25.0 * lighting_level * pow(1.04, float(lighting_level))))
+	return int(round(40.0 * lighting_level * pow(1.05, float(lighting_level))))
 
 func grandstand_daily_income() -> int:
-	return int(round(40.0 * grandstand_level * pow(1.04, float(grandstand_level))))
+	return int(round(60.0 * grandstand_level * pow(1.05, float(grandstand_level))))
 
 func grandstand_reputation_per_race() -> int:
 	@warning_ignore("integer_division")

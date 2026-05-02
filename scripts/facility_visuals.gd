@@ -435,12 +435,12 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 			dash.position = Vector3(dash_x, 0.07, parallel_pit_z)
 			parent.add_child(dash)
 
-	# Garage row NORTH of the pit lane (further from track). 1→14 bays
-	# scaling with facility level, evenly spaced along the parallel
-	# section of the pit straight (28 m gives ~2 m per bay at the cap,
-	# past the user's 10-bay minimum target for tier 10).
-	var bays: int = clampi(1 + roundi((float(level) - 1.0) * 13.0
-		/ float(maxi(Facilities.MAX_LEVEL - 1, 1))), 1, 14)
+	# Garage row NORTH of the pit lane. Bay count scales sqrt-style so
+	# the player sees a visible new garage every few facility upgrades
+	# in the early game and reaches 10 bays around level 50, capping
+	# at 16 by MAX_LEVEL (100). 36 m pit straight comfortably fits all
+	# 16 at 2.0 m bay width with margin.
+	var bays: int = clampi(1 + roundi(sqrt(float(level)) * 1.55), 1, 16)
 	var bay_w: float = 2.0
 	var bay_d: float = 3.4 + float(level) * 0.05
 	var bay_h: float = 2.6 + float(level) * 0.05
@@ -612,12 +612,19 @@ func _build_sponsor_boards(parent: Node3D, level: int) -> void:
 	# We skip the north straight entirely (pit complex sits there) and
 	# the very east/west extremes (cafeteria + merch shop are there).
 	# Boards face inward toward the racing line.
-	var board_count := mini(level * 2, 16)
+	#
+	# Capped at 8 boards across the south arc — at higher facility
+	# levels each board just gets bigger / brighter rather than
+	# multiplying into a wall of signs that overshadows the
+	# grandstand.
+	var board_count := clampi(2 + level / 6, 2, 8)
 	var asphalt_half: float = _track.current_asphalt_width() * 0.5
 	var wave_amp: float = _track.current_wave_amp()
 	var safe_offset: float = asphalt_half + wave_amp + 1.6
-	var w := 2.6
-	var h := 1.2
+	# Boards GROW with facility level instead of multiplying — caps the
+	# total visual footprint while still rewarding upgrades.
+	var w: float = 2.4 + float(level) * 0.05
+	var h: float = 1.1 + float(level) * 0.025
 	for idx in range(board_count):
 		# Spread along ψ ∈ [0.10π, 0.90π] of the south loop — centred on
 		# the apex but skipping the very corners near the straight.
