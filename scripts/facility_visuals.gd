@@ -25,12 +25,27 @@ const _SPONSOR_COLORS := [
 	Color(0.86, 0.42, 0.98),
 	Color(1.00, 0.55, 0.20),
 ]
+# Per-garage team colours so each pit bay has its own identity, like
+# a real F1 paddock with 10+ teams sharing one pit lane.
+const _GARAGE_TEAM_COLORS: Array[Color] = [
+	Color(0.96, 0.27, 0.36),  # red
+	Color(0.13, 0.45, 0.96),  # blue
+	Color(0.20, 0.85, 0.55),  # green
+	Color(0.99, 0.75, 0.18),  # yellow
+	Color(0.86, 0.42, 0.98),  # purple
+	Color(1.00, 0.55, 0.20),  # orange
+	Color(0.13, 0.83, 0.96),  # cyan
+	Color(0.95, 0.95, 0.95),  # white
+	Color(0.95, 0.30, 0.65),  # pink
+	Color(0.50, 0.30, 0.95),  # indigo
+]
 
 @export var track_path: NodePath
 
 var _track: Track
 var _root_holders := {}  # facility name → Node3D holder
 var _decoration_holder: Node3D
+var _customer_holder: Node3D
 
 
 func _ready() -> void:
@@ -46,11 +61,19 @@ func _ready() -> void:
 	_decoration_holder = Node3D.new()
 	_decoration_holder.name = "DecorationHolder"
 	add_child(_decoration_holder)
+	# Live customer figures — refreshed on queue_changed so the venue
+	# looks busier as more customers arrive. Separate holder so we
+	# don't rebuild the static decorations every queue tick.
+	_customer_holder = Node3D.new()
+	_customer_holder.name = "CustomerHolder"
+	add_child(_customer_holder)
 	EventBus.facility_upgraded.connect(_on_facility_upgraded)
 	# Track size only changes on tier rollover (per-level upgrades buy
 	# stats, not new geometry), so we only need to rebuild facility
 	# layout on track_tier_changed.
 	EventBus.track_tier_changed.connect(_on_tier_changed.unbind(2))
+	EventBus.queue_changed.connect(_on_queue_changed.unbind(1))
+	EventBus.customer_count_changed.connect(_on_queue_changed.unbind(1))
 	# Defer first build so the track has constructed its path/footprint.
 	call_deferred("_rebuild_all")
 
@@ -59,6 +82,7 @@ func _rebuild_all() -> void:
 	for facility: String in Facilities.facility_names():
 		_rebuild_one(facility)
 	_rebuild_decorations()
+	_rebuild_customers()
 
 
 func _rebuild_decorations() -> void:
@@ -69,6 +93,24 @@ func _rebuild_decorations() -> void:
 	_build_walkways(_decoration_holder)
 	_build_ticket_booth(_decoration_holder)
 	_build_trees(_decoration_holder)
+	_build_decorative_props(_decoration_holder)
+
+
+func _rebuild_customers() -> void:
+	if _track == null or _customer_holder == null:
+		return
+	for child in _customer_holder.get_children():
+		child.queue_free()
+	# Total figures = active queue + racing customers. Cap so a huge
+	# queue doesn't drown the camera in capsule people.
+	var live_count: int = _track.queue.size() + _track.racing.size()
+	var figure_count: int = clampi(live_count, 0, 60)
+	if figure_count > 0:
+		_build_walking_customers(_customer_holder, figure_count)
+
+
+func _on_queue_changed() -> void:
+	_rebuild_customers()
 
 
 func _on_facility_upgraded(facility: String, _level: int) -> void:
@@ -216,6 +258,17 @@ func _build_cafeteria(parent: Node3D, level: int) -> void:
 
 	# Main building.
 	_make_box(parent, Vector3(w, h, d), building_pos, _CAFETERIA_COLOR.darkened(0.15))
+
+	# Peaked roof on top of the cafeteria — small triangle prism that
+	# reads as a real "café" silhouette from above.
+	_make_box(parent, Vector3(w * 1.04, 0.20, d * 1.04),
+		building_pos + Vector3(0, h * 0.5 + 0.10, 0),
+		_CAFETERIA_COLOR.darkened(0.45))
+	# Two stripe ridges along the roof for cartoon detail.
+	for ridge_z: float in [-d * 0.30, d * 0.30]:
+		_make_box(parent, Vector3(w * 1.06, 0.10, 0.18),
+			building_pos + Vector3(0, h * 0.5 + 0.25, ridge_z),
+			Color(0.95, 0.95, 0.95))
 
 	# Lit-up sign band on the side facing the track.
 	_make_label_strip(parent, _CAFETERIA_COLOR,
@@ -473,32 +526,41 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 		else:
 			bay_p = float(i) / float(bays - 1)
 		var bay_x: float = lerpf(garage_first_x, garage_last_x, bay_p)
-		# Garage body
+		# Each bay gets a different team colour for the door — looks
+		# like real F1 paddock with multiple teams sharing the pit lane.
+		var team_color: Color = _GARAGE_TEAM_COLORS[i % _GARAGE_TEAM_COLORS.size()]
+		# Garage body — neutral dark grey so the team doors pop against it.
 		var garage := MeshInstance3D.new()
 		var gbm := BoxMesh.new()
 		gbm.size = Vector3(bay_w * 0.92, bay_h, bay_d)
 		garage.mesh = gbm
 		var gmat := StandardMaterial3D.new()
-		gmat.albedo_color = _PIT_LANE_COLOR.darkened(0.30)
+		gmat.albedo_color = Color(0.22, 0.23, 0.28)
 		gmat.metallic = 0.3
 		gmat.roughness = 0.6
 		garage.material_override = gmat
 		garage.position = Vector3(bay_x, bay_h * 0.5, garage_z)
 		parent.add_child(garage)
-		# Bright door panel facing the pit lane (south face).
+		# Team-coloured door panel facing the pit lane (south face).
 		var door := MeshInstance3D.new()
 		var dbm2 := BoxMesh.new()
 		dbm2.size = Vector3(bay_w * 0.78, bay_h * 0.75, 0.06)
 		door.mesh = dbm2
 		var door_mat := StandardMaterial3D.new()
-		door_mat.albedo_color = _PIT_LANE_COLOR
+		door_mat.albedo_color = team_color
 		door_mat.emission_enabled = true
-		door_mat.emission = _PIT_LANE_COLOR
+		door_mat.emission = team_color
 		door_mat.emission_energy_multiplier = 0.6
 		door.material_override = door_mat
 		door.position = Vector3(bay_x, bay_h * 0.4,
 			garage_z - bay_d * 0.5 - 0.04)
 		parent.add_child(door)
+		# Roof tag block in the same team colour above the door.
+		_make_box(parent,
+			Vector3(bay_w * 0.7, 0.16, 0.18),
+			Vector3(bay_x, bay_h + 0.10,
+				garage_z - bay_d * 0.5 - 0.06),
+			team_color)
 
 	# Paddock — flat asphalt slab behind the garages where teams park
 	# their motorhomes. Spans the parallel section's X range. Constant
@@ -580,10 +642,21 @@ func _build_lounge(parent: Node3D, level: int) -> void:
 	_make_box(parent, Vector3(0.05, rail_h, d * 0.85),
 		Vector3(pos.x - w * 0.42, ry, pos.z), _LOUNGE_COLOR.lightened(0.2))
 
-	# VIP beacon on top of the terrace.
+	# Antenna mast + emissive VIP beacon on top of the terrace —
+	# tower silhouette reads from anywhere on the venue.
+	var mast_h: float = 1.6 + float(level) * 0.02
+	_make_box(parent, Vector3(0.16, mast_h, 0.16),
+		Vector3(pos.x, ry + rail_h + mast_h * 0.5, pos.z),
+		Color(0.20, 0.20, 0.24))
+	# Beacon at the top of the mast.
 	_make_label_strip(parent, _LOUNGE_COLOR,
-		Vector3(pos.x, ry + rail_h, pos.z),
-		Vector3(0.5, 0.5, 0.5))
+		Vector3(pos.x, ry + rail_h + mast_h, pos.z),
+		Vector3(0.55, 0.55, 0.55))
+	# Big block "VIP" sign band wrapping the top floor — uses an
+	# emissive lounge-coloured strip so it glows day or night.
+	_make_label_strip(parent, _LOUNGE_COLOR.lightened(0.15),
+		Vector3(pos.x, pos.y + h * 0.5 - 0.6, pos.z + d * 0.5 + 0.06),
+		Vector3(w * 0.65, 0.45, 0.08))
 	_add_facility_click_area(parent, "lounge", pos,
 		Vector3(w * 1.1, h * 1.05, d * 1.1))
 
@@ -605,14 +678,26 @@ func _build_merch_shop(parent: Node3D, level: int) -> void:
 	# => pos.x = track_outer + safety + awning_extent + w/2
 	var pos := Vector3(_track_outer_x(SAFETY) + awning_extent + w * 0.5, h * 0.5, 0.0)
 	_make_box(parent, Vector3(w, h, d), pos, _MERCH_COLOR.darkened(0.15))
+	# Flat roof slab with darker tone — gives the kiosk a clean
+	# silhouette and reads as a real building from above.
+	_make_box(parent, Vector3(w * 1.06, 0.12, d * 1.06),
+		pos + Vector3(0, h * 0.5 + 0.06, 0),
+		_MERCH_COLOR.darkened(0.5))
 	# Sign band on the side facing the track.
 	_make_label_strip(parent, _MERCH_COLOR,
 		pos + Vector3(-w * 0.5 - 0.05, h * 0.4, 0),
 		Vector3(0.06, 0.30, d * 0.8))
-	# Awning over the entrance (extends toward the track, -X).
-	_make_box(parent, Vector3(w * 0.4, 0.08, d * 1.15),
-		pos + Vector3(-w * 0.5 - w * 0.2, h * 0.55, 0),
-		_MERCH_COLOR)
+	# Striped awning over the entrance — alternating green / white
+	# slabs for the iconic festival-kiosk look.
+	var awning_pos: Vector3 = pos + Vector3(-w * 0.5 - w * 0.2, h * 0.55, 0)
+	var stripe_count: int = 5
+	for i in range(stripe_count):
+		var u: float = (float(i) + 0.5) / float(stripe_count)
+		var sz: float = lerpf(-d * 0.55, d * 0.55, u)
+		var c: Color = _MERCH_COLOR if (i % 2 == 0) else Color(0.95, 0.96, 0.97)
+		_make_box(parent, Vector3(w * 0.4, 0.08, d * 0.22),
+			awning_pos + Vector3(0, 0, sz),
+			c)
 	_add_facility_click_area(parent, "merch_shop",
 		pos + Vector3(-w * 0.2, 0, 0),
 		Vector3(w * 1.6, h * 1.4, d * 1.2))
@@ -1290,3 +1375,164 @@ func _add_pole_flag(parent: Node3D, top_pos: Vector3, color: Color) -> void:
 	# Offset so the flag flies to the side of the pole
 	flag.position = top_pos + Vector3(0.30, 0.10, 0)
 	parent.add_child(flag)
+
+
+# ---------------------------------------------------------------------------
+# Live customer figures — capsule + sphere people scattered across the
+# venue's walkable areas, count tracking the live queue + racing tally
+# so the place visibly fills up as the game runs.
+# ---------------------------------------------------------------------------
+func _build_walking_customers(parent: Node3D, count: int) -> void:
+	var rng := RandomNumberGenerator.new()
+	# Re-seed each rebuild so figures don't all freeze in the same
+	# spots when the queue grows tick-by-tick.
+	rng.seed = randi()
+	var hub: Vector3 = _hub_position()
+	var plaza_z: float = hub.z
+	var plaza_w: float = _track_outer_x(0.0) * 2.0 + 6.0
+	var plaza_d: float = 8.0
+	# A handful of waypoint zones — plaza interior, walkway to
+	# grandstand entrance, branch stubs to lounge / cafeteria / merch.
+	# Each figure picks one zone weighted by area.
+	var grandstand_z: float = -_track_outer_z(1.5)
+	var lounge_branch_z: float = -_track_outer_z(13.5)
+	for i in range(count):
+		var zone: int = rng.randi_range(0, 5)
+		var pos: Vector3
+		match zone:
+			0:  # plaza interior (most common — split across zones 0-2)
+				pos = Vector3(
+					rng.randf_range(-plaza_w * 0.4, plaza_w * 0.4),
+					0.0,
+					plaza_z + rng.randf_range(-plaza_d * 0.4, plaza_d * 0.4))
+			1:
+				pos = Vector3(
+					rng.randf_range(-plaza_w * 0.4, plaza_w * 0.4),
+					0.0,
+					plaza_z + rng.randf_range(-plaza_d * 0.4, plaza_d * 0.4))
+			2:  # grandstand walkway
+				var t: float = rng.randf()
+				pos = Vector3(
+					rng.randf_range(-1.4, 1.4),
+					0.0,
+					lerpf(plaza_z + plaza_d * 0.5, grandstand_z, t))
+			3:  # cafeteria branch
+				pos = Vector3(
+					rng.randf_range(-plaza_w * 0.45, -plaza_w * 0.30),
+					0.0,
+					plaza_z - plaza_d * 0.5 - rng.randf_range(0.0, 1.5))
+			4:  # merch branch
+				pos = Vector3(
+					rng.randf_range(plaza_w * 0.30, plaza_w * 0.45),
+					0.0,
+					plaza_z - plaza_d * 0.5 - rng.randf_range(0.0, 1.5))
+			_:  # lounge stub
+				pos = Vector3(
+					rng.randf_range(-1.2, 1.2),
+					0.0,
+					lerpf(plaza_z - plaza_d * 0.5, lounge_branch_z,
+						rng.randf_range(0.2, 0.9)))
+		_make_walking_figure(parent, pos, rng)
+
+
+func _make_walking_figure(parent: Node3D, base_pos: Vector3, rng: RandomNumberGenerator) -> void:
+	var shirt: Color = _SPECTATOR_SHIRTS[rng.randi() % _SPECTATOR_SHIRTS.size()]
+	# Body — capsule
+	var body := MeshInstance3D.new()
+	var bm := CylinderMesh.new()
+	bm.top_radius = 0.16
+	bm.bottom_radius = 0.20
+	bm.height = 0.60
+	body.mesh = bm
+	var bmat := StandardMaterial3D.new()
+	bmat.albedo_color = shirt
+	bmat.roughness = 0.9
+	body.material_override = bmat
+	body.position = base_pos + Vector3(0, 0.30, 0)
+	parent.add_child(body)
+	# Head
+	var head := MeshInstance3D.new()
+	var hm := SphereMesh.new()
+	hm.radius = 0.13
+	hm.height = 0.26
+	head.mesh = hm
+	var hmat := StandardMaterial3D.new()
+	hmat.albedo_color = _SPECTATOR_SKIN
+	hmat.roughness = 0.85
+	head.material_override = hmat
+	head.position = base_pos + Vector3(0, 0.74, 0)
+	parent.add_child(head)
+
+
+# ---------------------------------------------------------------------------
+# Decorative props — flower beds along the plaza, banners between
+# lighting poles, walkway stripes. All small bright touches that
+# bring the venue to life without changing any gameplay mechanics.
+# ---------------------------------------------------------------------------
+const _FLOWER_COLORS: Array[Color] = [
+	Color(0.96, 0.27, 0.36),
+	Color(0.99, 0.75, 0.18),
+	Color(0.86, 0.42, 0.98),
+	Color(0.95, 0.95, 0.95),
+	Color(1.00, 0.55, 0.20),
+]
+
+
+func _build_decorative_props(parent: Node3D) -> void:
+	var hub: Vector3 = _hub_position()
+	var plaza_z: float = hub.z
+	var plaza_w: float = _track_outer_x(0.0) * 2.0 + 6.0
+	var plaza_d: float = 8.0
+
+	# Painted cross-stripes along the plaza front edge — gives the
+	# concrete some texture so it doesn't look like a flat slab.
+	var stripe_count: int = 9
+	for i in range(stripe_count):
+		var u: float = (float(i) + 0.5) / float(stripe_count)
+		var sx: float = lerpf(-plaza_w * 0.42, plaza_w * 0.42, u)
+		_make_box(parent,
+			Vector3(0.30, 0.04, plaza_d * 0.92),
+			Vector3(sx, 0.085, plaza_z),
+			_WALKWAY_COLOR.lightened(0.18))
+
+	# Flower beds along the plaza front edge (between plaza and
+	# grandstand walkway). Six small beds with mixed colours.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 13371
+	var bed_count: int = 8
+	for i in range(bed_count):
+		var u: float = (float(i) + 0.5) / float(bed_count)
+		var bx: float = lerpf(-plaza_w * 0.42, plaza_w * 0.42, u)
+		var bz: float = plaza_z + plaza_d * 0.5 + 1.6
+		# Skip beds that would sit on the grandstand walkway centre.
+		if absf(bx) < 2.5:
+			continue
+		# Soil base
+		_make_box(parent, Vector3(1.6, 0.12, 0.55),
+			Vector3(bx, 0.08, bz),
+			Color(0.32, 0.22, 0.15))
+		# Flower clusters
+		for f in range(3):
+			var fx: float = bx + lerpf(-0.55, 0.55, (float(f) + 0.5) / 3.0)
+			var c: Color = _FLOWER_COLORS[rng.randi() % _FLOWER_COLORS.size()]
+			_make_box(parent, Vector3(0.32, 0.18, 0.32),
+				Vector3(fx, 0.20, bz),
+				c)
+
+	# Banner / bunting strung between two pylons at the south edge of
+	# the plaza — angled triangle flags read as "festival" from above.
+	var pylon_xs: Array[float] = [-plaza_w * 0.45, plaza_w * 0.45]
+	for px: float in pylon_xs:
+		_make_box(parent, Vector3(0.12, 3.4, 0.12),
+			Vector3(px, 1.7, plaza_z - plaza_d * 0.5 - 0.4),
+			Color(0.30, 0.30, 0.34))
+	# Bunting flags — a row of small triangles between the two pylons.
+	var flag_count: int = 14
+	for i in range(flag_count):
+		var u: float = (float(i) + 0.5) / float(flag_count)
+		var fx: float = lerpf(-plaza_w * 0.45, plaza_w * 0.45, u)
+		var c: Color = _FLAG_COLORS[i % _FLAG_COLORS.size()]
+		var fy: float = 3.0 + sin(u * PI) * 0.15
+		_make_box(parent, Vector3(0.40, 0.30, 0.04),
+			Vector3(fx, fy, plaza_z - plaza_d * 0.5 - 0.4),
+			c)
