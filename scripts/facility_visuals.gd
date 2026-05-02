@@ -297,7 +297,10 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 	var loop_rx: float = _track.current_rx()
 	var asphalt_half: float = _track.current_asphalt_width() * 0.5
 	var asphalt_color := Color(0.42, 0.44, 0.48)
-	var pit_lane_width: float = 2.8 + float(level) * 0.06
+	# Pit-lane width is CONSTANT — only the garage count changes with
+	# facility level. (Previously the lane grew wider per level which
+	# made tier-10 pits absurdly thick.)
+	var pit_lane_width: float = 3.4
 	# Constant grass gap between pit and track in the parallel section.
 	var grass_gap: float = 3.5
 	# In the parallel middle section the pit centreline sits at this
@@ -435,15 +438,18 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 			dash.position = Vector3(dash_x, 0.07, parallel_pit_z)
 			parent.add_child(dash)
 
-	# Garage row NORTH of the pit lane. Bay count scales sqrt-style so
-	# the player sees a visible new garage every few facility upgrades
-	# in the early game and reaches 10 bays around level 50, capping
-	# at 16 by MAX_LEVEL (100). 36 m pit straight comfortably fits all
-	# 16 at 2.0 m bay width with margin.
-	var bays: int = clampi(1 + roundi(sqrt(float(level)) * 1.55), 1, 16)
-	var bay_w: float = 2.0
-	var bay_d: float = 3.4 + float(level) * 0.05
-	var bay_h: float = 2.6 + float(level) * 0.05
+	# Garage row NORTH of the pit lane. CAP at 10 bays — the user
+	# explicitly wants tier 10 to land at exactly 10 garages, not
+	# more. Sqrt curve so the player sees new garages quickly in the
+	# early game and reaches the 10-bay max around level 50.
+	#
+	# Bay dimensions are CONSTANT across levels — only the count
+	# grows. Real F1 garage bays are uniform; making them inflate
+	# with level made high-level pits look cartoony-oversized.
+	var bays: int = clampi(1 + roundi(sqrt(float(level)) * 1.27), 1, 10)
+	var bay_w: float = 2.4
+	var bay_d: float = 3.4
+	var bay_h: float = 2.6
 	var garage_z: float = parallel_pit_z + pit_lane_width * 0.5 \
 		+ bay_d * 0.5 + 0.30
 	# Garage row spans the same X range as the pit-wall (parallel
@@ -493,8 +499,9 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 		parent.add_child(door)
 
 	# Paddock — flat asphalt slab behind the garages where teams park
-	# their motorhomes. Spans the parallel section's X range.
-	var paddock_d: float = 5.5 + float(level) * 0.08
+	# their motorhomes. Spans the parallel section's X range. Constant
+	# size like the bays themselves.
+	var paddock_d: float = 5.5
 	var paddock_z: float = garage_z + bay_d * 0.5 + paddock_d * 0.5 + 0.5
 	var paddock_w: float = absf(garage_last_x - garage_first_x) + bay_w + 1.0
 	var paddock_center_x: float = (garage_first_x + garage_last_x) * 0.5
@@ -1121,14 +1128,25 @@ func _make_road(parent: Node3D, a: Vector3, b: Vector3, width: float, color: Col
 
 
 func _build_trees(parent: Node3D) -> void:
-	# Decorative trees scattered around the venue. Like the lighting
-	# ring, this is centred on the track's geometric centre so trees
-	# don't end up inside the pit complex on the +Z side.
-	var loop_rx: float = _track.current_rx()
+	# Decorative trees scattered around the venue. The track is
+	# asymmetric (north pit complex extends ~22 m past STRAIGHT_Z)
+	# so the tree ring needs enough north-side clearance that no
+	# tree ends up inside the garages or paddock. ring_z is sized to
+	# the LARGER of (natural south-side margin) and (north pit
+	# clearance + a buffer).
 	var loop_depth: float = _track.current_rz()
 	var center_z: float = _track.STRAIGHT_Z - loop_depth * 0.5
+	# Pit complex extends from STRAIGHT_Z out to roughly STRAIGHT_Z +
+	# asphalt_half + grass + pit_w + bay_d + paddock_d + safety ≈
+	# STRAIGHT_Z + 18 m, regardless of tier (constant pit dimensions).
+	# The ring centre is at STRAIGHT_Z - loop_depth/2 so the north
+	# clearance needed from centre = (STRAIGHT_Z + 18) - center_z =
+	# 18 + loop_depth/2.
+	var north_clearance: float = 18.0 + loop_depth * 0.5 + 6.0
+	var natural_clearance: float = (loop_depth * 0.5) + 14.0 \
+		+ _track.current_wave_amp()
 	var ring_x: float = _track_outer_x(18.0)
-	var ring_z: float = (loop_depth * 0.5) + 14.0 + _track.current_wave_amp()
+	var ring_z: float = maxf(natural_clearance, north_clearance)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 19370 + int(_track.track_tier())
 	var tree_count: int = 24
@@ -1139,9 +1157,6 @@ func _build_trees(parent: Node3D) -> void:
 		var z: float = center_z + sin(t) * (ring_z + jitter_r)
 		var height: float = rng.randf_range(3.5, 5.5)
 		_make_tree(parent, Vector3(x, 0.0, z), height, rng)
-	# Suppress unused-variable warning for loop_rx (kept for clarity).
-	if loop_rx > 0.0:
-		pass
 
 
 func _make_tree(parent: Node3D, base_pos: Vector3, height: float, rng: RandomNumberGenerator) -> void:
