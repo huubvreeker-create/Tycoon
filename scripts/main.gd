@@ -51,3 +51,5 @@ func _handle_tap(screen_pos: Vector2) -> void:
 			upgrade_popup.open_for("kart", track)
 		"track":
 			upgrade_popup.open_for("track", track)
+		"facility":
+			upgrade_popup.open_for("facilities", track)

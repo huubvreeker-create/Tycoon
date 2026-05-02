@@ -120,6 +120,25 @@ func _make_label_strip(parent: Node3D, color: Color, pos: Vector3, size: Vector3
 	parent.add_child(mi)
 
 
+func _add_facility_click_area(parent: Node3D, facility_id: String, center: Vector3, size: Vector3) -> void:
+	# Each facility gets a generous Area3D so the player can tap anywhere
+	# on or around the building to open the FACILITY tab in the panel.
+	# main.gd's tap raycast looks for the meta "kind" == "facility".
+	var area := Area3D.new()
+	area.name = facility_id.capitalize() + "Click"
+	area.collision_layer = 1
+	area.collision_mask = 1
+	area.set_meta("kind", "facility")
+	area.set_meta("facility_id", facility_id)
+	parent.add_child(area)
+	var shape := BoxShape3D.new()
+	shape.size = size
+	var collider := CollisionShape3D.new()
+	collider.shape = shape
+	collider.position = center
+	area.add_child(collider)
+
+
 # ---------------------------------------------------------------------------
 # Buildings
 # ---------------------------------------------------------------------------
@@ -186,6 +205,12 @@ func _build_cafeteria(parent: Node3D, level: int) -> void:
 			table_floor + Vector3(0, 1.55, 0),
 			_CAFETERIA_COLOR.lightened(0.15))
 
+	# Tap target covers building + patio.
+	var click_center := Vector3(building_pos.x + (w * 0.5 + patio_d) * 0.5,
+		h * 0.5, 0.0)
+	_add_facility_click_area(parent, "cafeteria", click_center,
+		Vector3(w + patio_d, h * 1.4, d * 1.05))
+
 
 func _build_pit_lane(parent: Node3D, level: int) -> void:
 	# A real pit complex: pit lane (asphalt) parallel to the track's long
@@ -251,16 +276,20 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 		Vector3(0, bay_h + 0.10, garage_z),
 		_PIT_LANE_COLOR.darkened(0.35))
 
-	# Connector slips at the two ends of the pit straight, visually
-	# merging the pit lane back into the main track.
-	var connector_length: float = 5.0
+	# Connector slips at the two ends of the pit straight, actually
+	# bridging the gap between the pit lane and the main track. Each
+	# connector is a long thin asphalt slab whose midpoint sits in the
+	# gap (z = midway between track edge and pit lane) and whose long
+	# axis points from the pit lane straight toward the track edge.
 	var connector_width: float = pit_lane_width * 0.85
-	# Direction is rotated ~30° so it visibly bends toward the track.
+	var gap_z: float = pit_lane_z - rz                  # asphalt-to-asphalt gap
+	var x_run: float = 4.0                              # how far the connector tilts in X
+	var connector_length: float = sqrt(gap_z * gap_z + x_run * x_run) + 1.0
 	for sign_x: int in [-1, 1]:
-		var connector_pos := Vector3(
-			float(sign_x) * (pit_lane_length * 0.5 + connector_length * 0.45),
-			0.04,
-			pit_lane_z * 0.55)
+		var pit_end_x: float = float(sign_x) * (pit_lane_length * 0.5)
+		var track_end_x: float = pit_end_x - float(sign_x) * x_run
+		var mid_x: float = (pit_end_x + track_end_x) * 0.5
+		var mid_z: float = (pit_lane_z + rz) * 0.5
 		var connector := MeshInstance3D.new()
 		var bm := BoxMesh.new()
 		bm.size = Vector3(connector_length, 0.08, connector_width)
@@ -269,10 +298,19 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 		mat.albedo_color = asphalt_color
 		mat.roughness = 0.85
 		connector.material_override = mat
-		connector.position = connector_pos
-		# Rotate to angle toward the track (around Y axis).
-		connector.rotation.y = deg_to_rad(28.0 * float(sign_x))
+		connector.position = Vector3(mid_x, 0.04, mid_z)
+		# Long axis (local +X) should point from pit_end → track_end.
+		var dx: float = track_end_x - pit_end_x
+		var dz: float = rz - pit_lane_z       # negative (track is at smaller z)
+		connector.rotation.y = atan2(-dz, dx)
 		parent.add_child(connector)
+
+	# One large click area covering the pit straight + garages.
+	_add_facility_click_area(parent, "pit_lane",
+		Vector3(0, bay_h * 0.5, (pit_lane_z + garage_z) * 0.5),
+		Vector3(maxf(pit_lane_length, total_garages_length) + 1.5,
+			bay_h * 1.4,
+			(garage_z - pit_lane_z) + bay_d + pit_lane_width + 1.5))
 
 
 func _build_lounge(parent: Node3D, level: int) -> void:
@@ -327,6 +365,8 @@ func _build_lounge(parent: Node3D, level: int) -> void:
 	_make_label_strip(parent, _LOUNGE_COLOR,
 		Vector3(pos.x, ry + rail_h, pos.z),
 		Vector3(0.5, 0.5, 0.5))
+	_add_facility_click_area(parent, "lounge", pos,
+		Vector3(w * 1.1, h * 1.05, d * 1.1))
 
 
 func _build_merch_shop(parent: Node3D, level: int) -> void:
@@ -347,6 +387,9 @@ func _build_merch_shop(parent: Node3D, level: int) -> void:
 	_make_box(parent, Vector3(w * 0.4, 0.08, d * 1.15),
 		pos + Vector3(-w * 0.5 - w * 0.2, h * 0.55, 0),
 		_MERCH_COLOR)
+	_add_facility_click_area(parent, "merch_shop",
+		pos + Vector3(-w * 0.2, 0, 0),
+		Vector3(w * 1.6, h * 1.4, d * 1.2))
 
 
 func _build_sponsor_boards(parent: Node3D, level: int) -> void:
@@ -355,8 +398,14 @@ func _build_sponsor_boards(parent: Node3D, level: int) -> void:
 	# narrow ends (-X cafeteria, +X merch shop) are left clear so they
 	# don't visually merge with the buildings parked there.
 	var board_count := mini(level * 2, 16)
-	var rx := _track_rx() + 1.6
-	var rz := _track_rz() + 1.6
+	# Sit boards outside the actual asphalt extent (track wave amplitude
+	# + asphalt half-width + a margin) so the support posts never sit
+	# on the rumble strip even on a tier-4 chicane circuit.
+	var t_tier: int = _track.track_tier()
+	var safe_offset: float = _track.TIER_WAVE_AMP[t_tier] \
+		+ _track.TIER_ASPHALT_WIDTH[t_tier] * 0.5 + 1.6
+	var rx := _track_rx() + safe_offset
+	var rz := _track_rz() + safe_offset
 	var w := 2.6
 	var h := 1.2
 	# Distribute boards along the two long arcs only — angle range
@@ -392,12 +441,20 @@ func _build_sponsor_boards(parent: Node3D, level: int) -> void:
 		parent.add_child(board)
 		# Support posts
 		_make_box(parent, Vector3(0.10, 0.6, 0.10), Vector3(x, 0.3, z), Color(0.18, 0.18, 0.20))
+		# A small click target per board so any tap on a sponsor opens
+		# the FACILITY tab.
+		_add_facility_click_area(parent, "sponsor_boards",
+			Vector3(x, 0.6, z),
+			Vector3(w + 0.4, 1.6, 0.6))
 
 
 func _build_lighting(parent: Node3D, level: int) -> void:
 	# Tall poles + light fixtures at corners of the track footprint.
-	var rx := _track_rx() + 3.0
-	var rz := _track_rz() + 3.0
+	var t_tier: int = _track.track_tier()
+	var safe_offset: float = _track.TIER_WAVE_AMP[t_tier] \
+		+ _track.TIER_ASPHALT_WIDTH[t_tier] * 0.5 + 2.0
+	var rx := _track_rx() + safe_offset
+	var rz := _track_rz() + safe_offset
 	var pole_count := mini(4 + (level - 1), 12)
 	var pole_height := 6.0 + level * 0.15
 	var positions: Array[Vector3] = []
@@ -436,6 +493,10 @@ func _build_lighting(parent: Node3D, level: int) -> void:
 		var to_centre := Vector3(-p.x, 0, -p.z).normalized()
 		fix.rotation.y = atan2(to_centre.x, to_centre.z)
 		parent.add_child(fix)
+		# Click target near the base of each pole.
+		_add_facility_click_area(parent, "lighting",
+			p + Vector3(0, pole_height * 0.5, 0),
+			Vector3(1.2, pole_height + 0.4, 1.2))
 
 
 func _build_grandstand(parent: Node3D, level: int) -> void:
@@ -469,6 +530,11 @@ func _build_grandstand(parent: Node3D, level: int) -> void:
 			Vector3(rx + 1.8 + side_d * 0.5, 0, 0),
 			Vector3(side_d, side_h, side_w), side_levels, true)
 
+	# One large click area covering the main stand area.
+	_add_facility_click_area(parent, "grandstand",
+		Vector3(0, main_h * 0.5, main_z),
+		Vector3(main_w * 1.1, main_h * 1.4, main_d * 1.4))
+
 
 func _make_grandstand_block(parent: Node3D, center: Vector3, size: Vector3, level: int, rotated: bool) -> void:
 	# `size` is interpreted in the stand's LOCAL frame:
@@ -480,23 +546,27 @@ func _make_grandstand_block(parent: Node3D, center: Vector3, size: Vector3, leve
 	var rows: int = clampi(3 + level / 2, 3, 7)
 	var row_depth: float = size.z / float(rows)
 	var row_y_step: float = size.y / float(rows)
+	# Track is at lower |z| than the grandstand (which sits at center.z
+	# more-negative-than the track). So the row CLOSEST to the track is
+	# at the most-positive local z, and rows step BACK in -local-z as
+	# they go higher. (For the side stands `rotated == true`, the same
+	# logic is mapped onto local x via the x/z swap further down.)
 	for r in range(rows):
-		# Each row is one step higher and one step further back than
-		# the previous one — gives the stepped seating silhouette.
 		var row_y: float = 0.20 + (float(r) + 0.5) * row_y_step
-		var row_local_z: float = -size.z * 0.5 + (float(r) + 0.5) * row_depth
+		var row_local_z: float = size.z * 0.5 - (float(r) + 0.5) * row_depth
 		var row_size: Vector3
 		var row_offset: Vector3
 		if rotated:
 			row_size = Vector3(row_depth * 0.95, row_y_step, size.x)
-			row_offset = Vector3(row_local_z, row_y, 0)
+			row_offset = Vector3(-row_local_z, row_y, 0)
 		else:
 			row_size = Vector3(size.x, row_y_step, row_depth * 0.95)
 			row_offset = Vector3(0, row_y, row_local_z)
 		_make_box(parent, row_size, center + row_offset,
 			_GRANDSTAND_COLOR.darkened(float(r) * 0.07))
 
-	# Roof over the top rows from level 5+.
+	# Roof over the BACK rows (away from the track). For the unrotated
+	# case the back is at -local-z; for rotated, +local-x.
 	if level >= 5:
 		var roof_thickness: float = 0.18
 		var roof_y: float = size.y + 0.85
@@ -504,20 +574,21 @@ func _make_grandstand_block(parent: Node3D, center: Vector3, size: Vector3, leve
 		var roof_offset: Vector3
 		if rotated:
 			roof_size = Vector3(size.z * 0.65, roof_thickness, size.x * 1.05)
-			roof_offset = Vector3(size.z * 0.18, roof_y, 0)
+			roof_offset = Vector3(-size.z * 0.18, roof_y, 0)
 		else:
 			roof_size = Vector3(size.x * 1.05, roof_thickness, size.z * 0.65)
-			roof_offset = Vector3(0, roof_y, size.z * 0.18)
+			roof_offset = Vector3(0, roof_y, -size.z * 0.18)
 		_make_box(parent, roof_size, center + roof_offset,
 			_GRANDSTAND_COLOR.darkened(0.5))
-		# Roof edge accent stripe (matches venue accent colour).
+		# Front edge of the roof (the side facing the track) gets an
+		# accent stripe.
 		var stripe_size: Vector3
 		var stripe_offset: Vector3
 		if rotated:
 			stripe_size = Vector3(0.04, 0.10, size.x * 1.05)
-			stripe_offset = Vector3(size.z * 0.18 - size.z * 0.32, roof_y - 0.15, 0)
+			stripe_offset = Vector3(-size.z * 0.18 + size.z * 0.32, roof_y - 0.15, 0)
 		else:
 			stripe_size = Vector3(size.x * 1.05, 0.10, 0.04)
-			stripe_offset = Vector3(0, roof_y - 0.15, size.z * 0.18 - size.z * 0.32)
+			stripe_offset = Vector3(0, roof_y - 0.15, -size.z * 0.18 + size.z * 0.32)
 		_make_label_strip(parent, _GRANDSTAND_COLOR.lightened(0.3),
 			center + stripe_offset, stripe_size)

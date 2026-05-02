@@ -87,6 +87,7 @@ var click_area: Area3D
 var click_collider: CollisionShape3D
 var ribbon_material: StandardMaterial3D
 var rumble_material: StandardMaterial3D
+var start_finish_root: Node3D
 
 var karts: Array = []                 # plain Array (typed Array[Kart] could swallow appends silently on some Godot builds)
 var queue: Array[Customer] = []
@@ -114,6 +115,7 @@ func _ready() -> void:
 	_build_path()
 	_build_asphalt()
 	_build_click_area()
+	_build_start_finish()
 	for i in range(initial_kart_count):
 		_add_kart_node(true)
 	print("[Track] Spawned %d karts on Tier %d Lvl %d" % [karts.size(), track_tier(), track_level])
@@ -257,10 +259,13 @@ func _rebuild_for_new_tier() -> void:
 		click_area.queue_free()
 	if ground:
 		ground.queue_free()
+	if start_finish_root:
+		start_finish_root.queue_free()
 	_build_ground()
 	_build_path()
 	_build_asphalt()
 	_build_click_area()
+	_build_start_finish()
 	for k: Kart in karts:
 		var prev_progress: float = k.progress
 		path.add_child(k)
@@ -378,6 +383,84 @@ func _build_click_area() -> void:
 	click_collider.shape = shape
 	click_collider.position = Vector3(0, 0.05, 0)
 	click_area.add_child(click_collider)
+
+
+func _build_start_finish() -> void:
+	# A bright finish line painted across the asphalt at the path's
+	# first point, plus a row of starting-grid markers behind it.
+	if path == null or path.curve == null or path.curve.point_count < 2:
+		return
+	start_finish_root = Node3D.new()
+	start_finish_root.name = "StartFinish"
+	add_child(start_finish_root)
+
+	var curve := path.curve
+	var start_pos: Vector3 = curve.get_point_position(0)
+	var next_pos: Vector3 = curve.get_point_position(1)
+	var tangent: Vector3 = (next_pos - start_pos).normalized()
+	# atan2(-tz, tx) makes a box's local +X axis align with `tangent`.
+	# So size.x runs ALONG the tangent (thin line direction) and size.z
+	# runs perpendicular to it (across the track width).
+	var rot_y: float = atan2(-tangent.z, tangent.x)
+	var t_tier: int = track_tier()
+	var w: float = TIER_ASPHALT_WIDTH[t_tier]
+
+	# Finish line — bright white slab across the asphalt.
+	var finish := MeshInstance3D.new()
+	finish.name = "FinishLine"
+	var fbm := BoxMesh.new()
+	fbm.size = Vector3(0.45, 0.07, w * 0.95)
+	finish.mesh = fbm
+	var fmat := StandardMaterial3D.new()
+	fmat.albedo_color = Color(0.96, 0.97, 1.0)
+	fmat.emission_enabled = true
+	fmat.emission = Color(0.96, 0.97, 1.0)
+	fmat.emission_energy_multiplier = 0.8
+	finish.material_override = fmat
+	finish.position = start_pos + Vector3(0, 0.06, 0)
+	finish.rotation.y = rot_y
+	start_finish_root.add_child(finish)
+
+	# A subtle "podium" pillar just outside the asphalt to make the
+	# start/finish location easy to spot from anywhere on the venue.
+	var podium := MeshInstance3D.new()
+	var pbm := BoxMesh.new()
+	pbm.size = Vector3(0.4, 1.6, 0.4)
+	podium.mesh = pbm
+	var pmat := StandardMaterial3D.new()
+	pmat.albedo_color = Color(0.96, 0.97, 1.0)
+	pmat.emission_enabled = true
+	pmat.emission = Color(0.96, 0.97, 1.0)
+	pmat.emission_energy_multiplier = 0.5
+	podium.material_override = pmat
+	# Offset the podium perpendicular to the track to one side.
+	var perp := Vector3(-tangent.z, 0, tangent.x).normalized()
+	podium.position = start_pos + perp * (w * 0.55 + 0.4) + Vector3(0, 0.8, 0)
+	start_finish_root.add_child(podium)
+
+	# Starting-grid markers behind the finish line, alternating sides
+	# (real F1 staggered grid). One marker per kart-capacity slot.
+	var grid_count: int = kart_capacity()
+	var spacing: float = 1.6
+	for i in range(grid_count):
+		var back_distance: float = float(i / 2 + 1) * spacing
+		var side_sign: float = -1.0 if (i % 2 == 0) else 1.0
+		var marker_pos: Vector3 = start_pos \
+			- tangent * back_distance \
+			+ perp * (side_sign * w * 0.22)
+		var marker := MeshInstance3D.new()
+		var mbm := BoxMesh.new()
+		mbm.size = Vector3(0.6, 0.05, 0.30)
+		marker.mesh = mbm
+		var mmat := StandardMaterial3D.new()
+		mmat.albedo_color = Color(0.92, 0.92, 0.95)
+		mmat.emission_enabled = true
+		mmat.emission = Color(0.92, 0.92, 0.95)
+		mmat.emission_energy_multiplier = 0.45
+		marker.material_override = mmat
+		marker.position = marker_pos + Vector3(0, 0.06, 0)
+		marker.rotation.y = rot_y
+		start_finish_root.add_child(marker)
 
 
 func _add_kart_node(initial_spawn: bool) -> void:
