@@ -14,13 +14,86 @@ var racing: bool = false
 var body_mesh: MeshInstance3D
 var cockpit_mesh: MeshInstance3D
 var spoiler_mesh: MeshInstance3D
+var front_wing_mesh: MeshInstance3D
 var halo_mesh: MeshInstance3D
+var beacon_mesh: MeshInstance3D
 var wheel_meshes: Array[MeshInstance3D] = []
 var click_area: Area3D
 var body_material: StandardMaterial3D
+var cockpit_material: StandardMaterial3D
+var spoiler_material: StandardMaterial3D
+var front_wing_material: StandardMaterial3D
+var beacon_material: StandardMaterial3D
+var wheel_material: StandardMaterial3D
 
 var _flash_time: float = 0.0
 var _flash_color: Color = Color.WHITE
+
+
+# ---------------------------------------------------------------------------
+# Tier-specific visual recipes. Each entry is the look at that tier.
+# Vehicles get LONGER / LOWER / NARROWER as they progress (F1 silhouette);
+# spoilers + wings get bigger; wheels get larger and more exposed.
+# ---------------------------------------------------------------------------
+const _BODY_SIZE := {
+	1: Vector3(0.95, 0.28, 1.4),   # kid kart — squat
+	2: Vector3(1.00, 0.30, 1.7),   # sport kart
+	3: Vector3(0.95, 0.26, 2.6),   # pro race car — narrower, longer
+	4: Vector3(0.85, 0.20, 3.8),   # F1 — very narrow, very long, low
+}
+const _BODY_Y := { 1: 0.36, 2: 0.40, 3: 0.34, 4: 0.28 }
+
+const _COCKPIT_SIZE := {
+	1: Vector3(0.50, 0.26, 0.55),
+	2: Vector3(0.55, 0.30, 0.65),
+	3: Vector3(0.55, 0.32, 0.75),
+	4: Vector3(0.50, 0.32, 0.70),  # enclosed F1 cell
+}
+const _COCKPIT_OFFSET := {
+	1: Vector3(0, 0.55, 0.15),
+	2: Vector3(0, 0.62, 0.20),
+	3: Vector3(0, 0.62, 0.40),
+	4: Vector3(0, 0.55, 0.55),
+}
+
+const _SPOILER_SIZE := {
+	1: Vector3.ZERO,
+	2: Vector3(0.85, 0.28, 0.14),
+	3: Vector3(1.05, 0.42, 0.18),
+	4: Vector3(1.30, 0.55, 0.22),  # huge F1 wing
+}
+const _SPOILER_OFFSET := {
+	1: Vector3.ZERO,
+	2: Vector3(0, 0.65, 0.80),
+	3: Vector3(0, 0.78, 1.15),
+	4: Vector3(0, 0.95, 1.70),
+}
+
+const _FRONT_WING_SIZE := {
+	1: Vector3.ZERO,
+	2: Vector3.ZERO,
+	3: Vector3(1.05, 0.10, 0.30),
+	4: Vector3(1.40, 0.10, 0.45),
+}
+const _FRONT_WING_OFFSET := {
+	1: Vector3.ZERO,
+	2: Vector3.ZERO,
+	3: Vector3(0, 0.18, -1.20),
+	4: Vector3(0, 0.14, -1.85),
+}
+
+const _WHEEL_RADIUS := { 1: 0.18, 2: 0.20, 3: 0.25, 4: 0.32 }
+const _WHEEL_HEIGHT := { 1: 0.14, 2: 0.16, 3: 0.18, 4: 0.22 }
+const _WHEEL_X := { 1: 0.55, 2: 0.60, 3: 0.65, 4: 0.72 }
+const _WHEEL_Z := { 1: 0.55, 2: 0.65, 3: 0.95, 4: 1.45 }
+
+const _BEACON_SIZE := {
+	1: Vector3(0.45, 0.45, 0.45),
+	2: Vector3(0.40, 0.35, 0.40),
+	3: Vector3(0.30, 0.20, 0.30),  # smaller — F1-ish camera fairing
+	4: Vector3(0.25, 0.12, 0.25),
+}
+const _BEACON_Y := { 1: 1.10, 2: 1.10, 3: 0.90, 4: 0.75 }
 
 
 func _ready() -> void:
@@ -40,8 +113,9 @@ func _process(delta: float) -> void:
 		body_material.emission = _flash_color
 		body_material.emission_energy_multiplier = t * 2.0
 		if _flash_time <= 0.0:
-			body_material.emission_enabled = racing
-			body_material.emission_energy_multiplier = 0.6 if racing else 0.0
+			body_material.emission_enabled = true
+			body_material.emission = kart_color
+			body_material.emission_energy_multiplier = 0.6 if racing else 0.4
 
 
 func tier() -> int:
@@ -67,8 +141,13 @@ func set_racing(active: bool) -> void:
 
 
 func set_level(new_level: int) -> void:
+	var prev_tier: int = tier()
 	level = clampi(new_level, 1, 100)
 	_apply_visuals()
+	# Wheels need to be re-laid out when their dimensions change at a
+	# tier rollover; rebuild them in place.
+	if prev_tier != tier():
+		_rebuild_wheels()
 
 
 func flash_finish(satisfaction: float) -> void:
@@ -81,106 +160,62 @@ func flash_spawn() -> void:
 	_flash_color = Color.WHITE
 
 
-# --- Construction ----------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Construction
+# ---------------------------------------------------------------------------
 func _build_meshes() -> void:
-	# PathFollow3D with ROTATION_Y: local -Z points forward along path.
-	# Sized for visibility from a top-down portrait camera ~26 m away.
-	# Body: 1.5 m wide (X), 0.45 m tall (Y), 2.4 m long (Z along path).
-	body_mesh = MeshInstance3D.new()
-	body_mesh.name = "Body"
-	var body := BoxMesh.new()
-	body.size = Vector3(1.5, 0.45, 2.4)
-	body_mesh.mesh = body
-	body_material = StandardMaterial3D.new()
-	body_material.albedo_color = kart_color
-	body_material.metallic = 0.2
-	body_material.roughness = 0.45
-	# Always-on faint emissive so the kart is visible against dark asphalt.
-	body_material.emission_enabled = true
-	body_material.emission = kart_color
-	body_material.emission_energy_multiplier = 0.4
-	body_mesh.material_override = body_material
-	body_mesh.position = Vector3(0, 0.55, 0)
-	add_child(body_mesh)
+	body_material = _make_body_material()
+	cockpit_material = _make_simple_material(kart_color.darkened(0.45), 0.6)
+	spoiler_material = _make_simple_material(kart_color.darkened(0.2), 0.5)
+	front_wing_material = _make_simple_material(kart_color.darkened(0.15), 0.45)
+	beacon_material = _make_emissive_material(kart_color.lightened(0.25), kart_color, 1.6)
+	wheel_material = _make_simple_material(Color(0.08, 0.08, 0.10), 0.8)
 
-	# Cockpit: sits toward the rear (+Z side) above the body.
-	cockpit_mesh = MeshInstance3D.new()
-	cockpit_mesh.name = "Cockpit"
-	var cockpit := BoxMesh.new()
-	cockpit.size = Vector3(0.85, 0.40, 1.0)
-	cockpit_mesh.mesh = cockpit
-	var cockpit_mat := StandardMaterial3D.new()
-	cockpit_mat.albedo_color = kart_color.darkened(0.45)
-	cockpit_mat.roughness = 0.6
-	cockpit_mesh.material_override = cockpit_mat
-	cockpit_mesh.position = Vector3(0, 1.0, 0.32)
-	add_child(cockpit_mesh)
+	body_mesh = _make_box_mesh("Body", Vector3.ONE, body_material)
+	cockpit_mesh = _make_box_mesh("Cockpit", Vector3.ONE, cockpit_material)
+	spoiler_mesh = _make_box_mesh("Spoiler", Vector3.ONE, spoiler_material)
+	front_wing_mesh = _make_box_mesh("FrontWing", Vector3.ONE, front_wing_material)
+	beacon_mesh = _make_box_mesh("Beacon", Vector3.ONE, beacon_material)
 
-	# Rear spoiler (visible tier 2+).
-	spoiler_mesh = MeshInstance3D.new()
-	spoiler_mesh.name = "Spoiler"
-	var spoiler := BoxMesh.new()
-	spoiler.size = Vector3(1.3, 0.45, 0.20)
-	spoiler_mesh.mesh = spoiler
-	var spoiler_mat := StandardMaterial3D.new()
-	spoiler_mat.albedo_color = kart_color.darkened(0.2)
-	spoiler_mesh.material_override = spoiler_mat
-	spoiler_mesh.position = Vector3(0, 1.0, 1.15)
-	add_child(spoiler_mesh)
-
-	# Halo (tier 4): flat ring above cockpit.
+	# Halo (tier 4 cosmetic) — torus around the cockpit area.
 	halo_mesh = MeshInstance3D.new()
 	halo_mesh.name = "Halo"
 	var halo := TorusMesh.new()
-	halo.inner_radius = 0.42
-	halo.outer_radius = 0.50
+	halo.inner_radius = 0.36
+	halo.outer_radius = 0.44
 	halo_mesh.mesh = halo
-	var halo_mat := StandardMaterial3D.new()
-	halo_mat.albedo_color = kart_color.lightened(0.45)
-	halo_mat.emission_enabled = true
-	halo_mat.emission = kart_color.lightened(0.5)
-	halo_mat.emission_energy_multiplier = 1.2
+	var halo_mat := _make_emissive_material(kart_color.lightened(0.45), kart_color.lightened(0.5), 1.2)
 	halo_mesh.material_override = halo_mat
-	halo_mesh.position = Vector3(0, 1.55, 0.32)
 	halo_mesh.rotation = Vector3(deg_to_rad(90), 0, 0)
 	add_child(halo_mesh)
 
-	# Beacon — a glowing colored cube above the cockpit so each kart is
-	# unmissable from the top-down portrait camera even at full zoom-out.
-	var beacon := MeshInstance3D.new()
-	beacon.name = "Beacon"
-	var beacon_mesh := BoxMesh.new()
-	beacon_mesh.size = Vector3(0.55, 0.55, 0.55)
-	beacon.mesh = beacon_mesh
-	var beacon_mat := StandardMaterial3D.new()
-	beacon_mat.albedo_color = kart_color.lightened(0.25)
-	beacon_mat.emission_enabled = true
-	beacon_mat.emission = kart_color
-	beacon_mat.emission_energy_multiplier = 1.8
-	beacon.material_override = beacon_mat
-	beacon.position = Vector3(0, 1.65, 0.0)
-	add_child(beacon)
+	_rebuild_wheels()
 
-	# Wheels: CylinderMesh with axis along X (rotated 90° around Z).
-	# Front axle at Z=-0.85, rear at Z=+0.85; left/right at X=±0.85.
-	var wheel_mat := StandardMaterial3D.new()
-	wheel_mat.albedo_color = Color(0.08, 0.08, 0.10)
-	wheel_mat.roughness = 0.8
+
+func _rebuild_wheels() -> void:
+	for w: MeshInstance3D in wheel_meshes:
+		w.queue_free()
+	wheel_meshes.clear()
+	var t: int = tier()
+	var radius: float = _WHEEL_RADIUS[t]
+	var height: float = _WHEEL_HEIGHT[t]
+	var ox: float = _WHEEL_X[t]
+	var oz: float = _WHEEL_Z[t]
 	for offset: Vector3 in [
-		Vector3( 0.85, 0.30,  0.85),
-		Vector3( 0.85, 0.30, -0.85),
-		Vector3(-0.85, 0.30,  0.85),
-		Vector3(-0.85, 0.30, -0.85),
+		Vector3( ox, radius,  oz),
+		Vector3( ox, radius, -oz),
+		Vector3(-ox, radius,  oz),
+		Vector3(-ox, radius, -oz),
 	]:
 		var wheel := MeshInstance3D.new()
 		var cyl := CylinderMesh.new()
-		cyl.top_radius = 0.30
-		cyl.bottom_radius = 0.30
-		cyl.height = 0.22
+		cyl.top_radius = radius
+		cyl.bottom_radius = radius
+		cyl.height = height
 		wheel.mesh = cyl
-		wheel.material_override = wheel_mat
+		wheel.material_override = wheel_material
 		wheel.position = offset
-		# Rotate around Z so the cylinder axis (Y) lies along X (wheel axle).
+		# Cylinder axis (Y) → X via Z rotation 90°
 		wheel.rotation = Vector3(0, 0, deg_to_rad(90))
 		add_child(wheel)
 		wheel_meshes.append(wheel)
@@ -195,27 +230,104 @@ func _build_click_area() -> void:
 	click_area.set_meta("kind", "kart")
 	add_child(click_area)
 	var shape := BoxShape3D.new()
-	shape.size = Vector3(2.0, 2.2, 2.8)
+	shape.size = Vector3(2.0, 1.6, 4.0)
 	var collider := CollisionShape3D.new()
 	collider.shape = shape
-	collider.position = Vector3(0, 0.9, 0)
+	collider.position = Vector3(0, 0.8, 0)
 	click_area.add_child(collider)
 
 
 func _apply_visuals() -> void:
 	if body_material == null:
 		return
+	var t: int = tier()
+
+	# --- Body ---
+	(body_mesh.mesh as BoxMesh).size = _BODY_SIZE[t]
+	body_mesh.position = Vector3(0, _BODY_Y[t], 0)
 	body_material.albedo_color = kart_color
-	var t := tier()
-	spoiler_mesh.visible = t >= 2
-	halo_mesh.visible = t >= 4
-	body_material.metallic = 0.2 + (t - 1) * 0.12
-	body_material.roughness = 0.5 - (t - 1) * 0.07
+	body_material.metallic = 0.20 + (t - 1) * 0.12
+	body_material.roughness = 0.50 - (t - 1) * 0.08
+
+	# --- Cockpit ---
+	(cockpit_mesh.mesh as BoxMesh).size = _COCKPIT_SIZE[t]
+	cockpit_mesh.position = _COCKPIT_OFFSET[t]
+	cockpit_material.albedo_color = kart_color.darkened(0.45)
+
+	# --- Rear spoiler ---
+	if t >= 2:
+		spoiler_mesh.visible = true
+		(spoiler_mesh.mesh as BoxMesh).size = _SPOILER_SIZE[t]
+		spoiler_mesh.position = _SPOILER_OFFSET[t]
+		spoiler_material.albedo_color = kart_color.darkened(0.2)
+	else:
+		spoiler_mesh.visible = false
+
+	# --- Front wing (F1 territory) ---
+	if t >= 3:
+		front_wing_mesh.visible = true
+		(front_wing_mesh.mesh as BoxMesh).size = _FRONT_WING_SIZE[t]
+		front_wing_mesh.position = _FRONT_WING_OFFSET[t]
+		front_wing_material.albedo_color = kart_color.darkened(0.15)
+	else:
+		front_wing_mesh.visible = false
+
+	# --- Halo (tier 4 only) ---
+	if t >= 4:
+		halo_mesh.visible = true
+		halo_mesh.position = _COCKPIT_OFFSET[t] + Vector3(0, 0.45, 0)
+	else:
+		halo_mesh.visible = false
+
+	# --- Beacon (always-on glow) ---
+	(beacon_mesh.mesh as BoxMesh).size = _BEACON_SIZE[t]
+	beacon_mesh.position = Vector3(0, _BEACON_Y[t], 0)
+	beacon_material.albedo_color = kart_color.lightened(0.25)
+	beacon_material.emission = kart_color
 
 
 func _refresh_emission() -> void:
 	if body_material == null:
 		return
-	body_material.emission_enabled = racing
-	body_material.emission = kart_color.lightened(0.4)
-	body_material.emission_energy_multiplier = 0.6 if racing else 0.0
+	body_material.emission_enabled = true
+	body_material.emission = kart_color
+	body_material.emission_energy_multiplier = 0.6 if racing else 0.4
+
+
+# --- Mesh / material helpers ----------------------------------------------
+func _make_box_mesh(name_: String, size: Vector3, mat: Material) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.name = name_
+	var bm := BoxMesh.new()
+	bm.size = size
+	mi.mesh = bm
+	mi.material_override = mat
+	add_child(mi)
+	return mi
+
+
+func _make_body_material() -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = kart_color
+	m.metallic = 0.2
+	m.roughness = 0.5
+	m.emission_enabled = true
+	m.emission = kart_color
+	m.emission_energy_multiplier = 0.4
+	return m
+
+
+func _make_simple_material(color: Color, roughness: float) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = color
+	m.roughness = roughness
+	return m
+
+
+func _make_emissive_material(albedo: Color, emission: Color, energy: float) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = albedo
+	m.emission_enabled = true
+	m.emission = emission
+	m.emission_energy_multiplier = energy
+	return m

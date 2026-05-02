@@ -32,12 +32,13 @@ const TIER_NAMES := {
 }
 const TIER_KART_CAPACITY := { 1: 5, 2: 8, 3: 12, 4: 16 }
 const TIER_RACE_DURATION := { 1: 7.0, 2: 8.0, 3: 9.5, 4: 11.0 }
-# Track footprint (in metres of world space).
-const TIER_TRACK_RX := { 1: 14.0, 2: 16.0, 3: 18.0, 4: 20.0 }
-const TIER_TRACK_RZ := { 1: 8.0,  2: 9.0,  3: 10.0, 4: 11.0 }
-const TIER_ASPHALT_WIDTH := { 1: 3.6, 2: 4.0, 3: 4.4, 4: 4.8 }
+# Track footprint (in metres of world space). Each tier roughly doubles
+# the circuit size — tier 1 is a karting oval, tier 4 is a full F1 lap.
+const TIER_TRACK_RX := { 1: 14.0, 2: 20.0, 3: 28.0, 4: 38.0 }
+const TIER_TRACK_RZ := { 1: 8.0,  2: 12.0, 3: 17.0, 4: 22.0 }
+const TIER_ASPHALT_WIDTH := { 1: 3.4, 2: 4.2, 3: 5.0, 4: 5.8 }
 const TIER_WAVE_FREQ := { 1: 0, 2: 3, 3: 5, 4: 7 }
-const TIER_WAVE_AMP := { 1: 0.0, 2: 1.1, 3: 1.5, 4: 1.8 }
+const TIER_WAVE_AMP := { 1: 0.0, 2: 1.6, 3: 2.6, 4: 3.6 }
 const TIER_RIBBON_COLOR := {
 	1: Color(0.13, 0.83, 0.96),
 	2: Color(0.55, 0.92, 0.38),
@@ -49,6 +50,13 @@ const TIER_RUMBLE_COLOR := {
 	2: Color(0.96, 0.27, 0.36),
 	3: Color(1.00, 0.40, 0.20),
 	4: Color(1.00, 0.30, 0.55),
+}
+# Asphalt darkens as you climb tiers — F1 surfaces look almost-black.
+const TIER_ASPHALT_COLOR := {
+	1: Color(0.16, 0.17, 0.22),
+	2: Color(0.13, 0.14, 0.19),
+	3: Color(0.10, 0.11, 0.15),
+	4: Color(0.07, 0.08, 0.10),
 }
 
 # Level-based progression (see balance pass).
@@ -341,7 +349,7 @@ func _build_asphalt() -> void:
 		Vector2(-w * 0.5, -ASPHALT_DEPTH * 0.5),
 	])
 	ribbon_material = StandardMaterial3D.new()
-	ribbon_material.albedo_color = Color(0.13, 0.14, 0.20)
+	ribbon_material.albedo_color = TIER_ASPHALT_COLOR[t_tier]
 	ribbon_material.metallic = 0.05
 	ribbon_material.roughness = 0.85
 	asphalt_csg.material_override = ribbon_material
