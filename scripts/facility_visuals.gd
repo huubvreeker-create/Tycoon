@@ -14,6 +14,7 @@ const _CAFETERIA_COLOR  := Color(0.99, 0.75, 0.18)
 const _PIT_LANE_COLOR   := Color(0.13, 0.83, 0.96)
 const _LOUNGE_COLOR     := Color(0.86, 0.42, 0.98)
 const _MERCH_COLOR      := Color(0.55, 0.92, 0.38)
+const _GRANDSTAND_COLOR := Color(0.65, 0.55, 0.78)
 const _SPONSOR_COLORS := [
 	Color(0.96, 0.27, 0.36),
 	Color(0.99, 0.75, 0.18),
@@ -73,6 +74,7 @@ func _rebuild_one(facility: String) -> void:
 		"merch_shop":     _build_merch_shop(holder, level)
 		"sponsor_boards": _build_sponsor_boards(holder, level)
 		"lighting":       _build_lighting(holder, level)
+		"grandstand":     _build_grandstand(holder, level)
 
 
 # ---------------------------------------------------------------------------
@@ -417,3 +419,88 @@ func _build_lighting(parent: Node3D, level: int) -> void:
 		var to_centre := Vector3(-p.x, 0, -p.z).normalized()
 		fix.rotation.y = atan2(to_centre.x, to_centre.z)
 		parent.add_child(fix)
+
+
+func _build_grandstand(parent: Node3D, level: int) -> void:
+	# Grandstands grow with the grandstand FACILITY level AND with the
+	# track tier — a tier-4 venue's stands are bigger than a tier-1
+	# venue's at the same facility level.
+	var tier_scale: float = 1.0 + (_track.track_tier() - 1) * 0.30
+	var rx := _track_rx()
+	var rz := _track_rz()
+
+	# Main stand on the spectator side (-Z), opposite the pit complex.
+	var main_w: float = (8.0 + level * 0.55) * tier_scale
+	var main_d: float = 2.6 + level * 0.10
+	var main_h: float = (1.2 + level * 0.18) * tier_scale
+	var main_z: float = -rz - 1.8 - main_d * 0.5
+	_make_grandstand_block(parent, Vector3(0, 0, main_z),
+		Vector3(main_w, main_h, main_d), level, false)
+
+	# Side stands at the +X / -X ends from level 7+ (rotated 90°).
+	if level >= 7:
+		var side_levels: int = level - 6
+		var side_w: float = (5.0 + side_levels * 0.4) * tier_scale
+		var side_d: float = 2.4 + side_levels * 0.08
+		var side_h: float = (1.0 + side_levels * 0.12) * tier_scale
+		# West stand at -X end
+		_make_grandstand_block(parent,
+			Vector3(-rx - 1.8 - side_d * 0.5, 0, 0),
+			Vector3(side_d, side_h, side_w), side_levels, true)
+		# East stand at +X end
+		_make_grandstand_block(parent,
+			Vector3(rx + 1.8 + side_d * 0.5, 0, 0),
+			Vector3(side_d, side_h, side_w), side_levels, true)
+
+
+func _make_grandstand_block(parent: Node3D, center: Vector3, size: Vector3, level: int, rotated: bool) -> void:
+	# `size` is interpreted in the stand's LOCAL frame:
+	#   x = width (along the track edge)
+	#   y = total stand height
+	#   z = depth (front-to-back, away from track)
+	# When `rotated == true` we swap x and z so the stand runs along
+	# the track's perpendicular axis instead.
+	var rows: int = clampi(3 + level / 2, 3, 7)
+	var row_depth: float = size.z / float(rows)
+	var row_y_step: float = size.y / float(rows)
+	for r in range(rows):
+		# Each row is one step higher and one step further back than
+		# the previous one — gives the stepped seating silhouette.
+		var row_y: float = 0.20 + (float(r) + 0.5) * row_y_step
+		var row_local_z: float = -size.z * 0.5 + (float(r) + 0.5) * row_depth
+		var row_size: Vector3
+		var row_offset: Vector3
+		if rotated:
+			row_size = Vector3(row_depth * 0.95, row_y_step, size.x)
+			row_offset = Vector3(row_local_z, row_y, 0)
+		else:
+			row_size = Vector3(size.x, row_y_step, row_depth * 0.95)
+			row_offset = Vector3(0, row_y, row_local_z)
+		_make_box(parent, row_size, center + row_offset,
+			_GRANDSTAND_COLOR.darkened(float(r) * 0.07))
+
+	# Roof over the top rows from level 5+.
+	if level >= 5:
+		var roof_thickness: float = 0.18
+		var roof_y: float = size.y + 0.85
+		var roof_size: Vector3
+		var roof_offset: Vector3
+		if rotated:
+			roof_size = Vector3(size.z * 0.65, roof_thickness, size.x * 1.05)
+			roof_offset = Vector3(size.z * 0.18, roof_y, 0)
+		else:
+			roof_size = Vector3(size.x * 1.05, roof_thickness, size.z * 0.65)
+			roof_offset = Vector3(0, roof_y, size.z * 0.18)
+		_make_box(parent, roof_size, center + roof_offset,
+			_GRANDSTAND_COLOR.darkened(0.5))
+		# Roof edge accent stripe (matches venue accent colour).
+		var stripe_size: Vector3
+		var stripe_offset: Vector3
+		if rotated:
+			stripe_size = Vector3(0.04, 0.10, size.x * 1.05)
+			stripe_offset = Vector3(size.z * 0.18 - size.z * 0.32, roof_y - 0.15, 0)
+		else:
+			stripe_size = Vector3(size.x * 1.05, 0.10, 0.04)
+			stripe_offset = Vector3(0, roof_y - 0.15, size.z * 0.18 - size.z * 0.32)
+		_make_label_strip(parent, _GRANDSTAND_COLOR.lightened(0.3),
+			center + stripe_offset, stripe_size)

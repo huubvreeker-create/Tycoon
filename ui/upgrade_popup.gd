@@ -200,6 +200,7 @@ func _add_facility_rows() -> void:
 		"merch_shop":     Color(0.55, 0.92, 0.38),
 		"sponsor_boards": Color(1.00, 0.55, 0.20),
 		"lighting":       Color(0.95, 0.95, 0.60),
+		"grandstand":     Color(0.65, 0.55, 0.78),
 	}
 	for fac: String in Facilities.facility_names():
 		var lv := Facilities.get_level(fac)

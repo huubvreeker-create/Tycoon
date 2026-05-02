@@ -140,6 +140,7 @@ func _serialize() -> Dictionary:
 			"merch_shop":     Facilities.merch_shop_level,
 			"sponsor_boards": Facilities.sponsor_boards_level,
 			"lighting":       Facilities.lighting_level,
+			"grandstand":     Facilities.grandstand_level,
 		},
 		"staff": Staff.counts.duplicate(),
 		"daily_events": {
@@ -187,6 +188,7 @@ func _deserialize(data: Dictionary) -> void:
 		Facilities.merch_shop_level     = int(f.get("merch_shop", 0))
 		Facilities.sponsor_boards_level = int(f.get("sponsor_boards", 0))
 		Facilities.lighting_level       = int(f.get("lighting", 0))
+		Facilities.grandstand_level     = int(f.get("grandstand", 0))
 	if data.has("staff"):
 		var st: Dictionary = data["staff"]
 		for role: String in Staff.role_names():
@@ -307,6 +309,7 @@ func reset_to_defaults() -> void:
 	Facilities.merch_shop_level = 0
 	Facilities.sponsor_boards_level = 0
 	Facilities.lighting_level = 0
+	Facilities.grandstand_level = 0
 	# Staff
 	for role: String in Staff.role_names():
 		Staff.counts[role] = 0

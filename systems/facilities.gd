@@ -14,6 +14,7 @@ const _BUILD_COST := {
 	"merch_shop":    600.0,
 	"sponsor_boards":400.0,
 	"lighting":      700.0,
+	"grandstand":    600.0,
 }
 
 const _NAMES := {
@@ -23,6 +24,7 @@ const _NAMES := {
 	"merch_shop":     "Merch Shop",
 	"sponsor_boards": "Sponsor Boards",
 	"lighting":       "Lighting Rigs",
+	"grandstand":     "Grandstands",
 }
 
 const _DESCRIPTIONS := {
@@ -32,6 +34,7 @@ const _DESCRIPTIONS := {
 	"merch_shop":     "Passive daily income",
 	"sponsor_boards": "Sponsor revenue every day",
 	"lighting":       "Night atmosphere + revenue multiplier",
+	"grandstand":     "Spectator income + reputation per race",
 }
 
 var cafeteria_level:      int = 0
@@ -40,6 +43,7 @@ var lounge_level:         int = 0
 var merch_shop_level:     int = 0
 var sponsor_boards_level: int = 0
 var lighting_level:       int = 0
+var grandstand_level:     int = 0
 
 
 # --- Effects ----------------------------------------------------------------
@@ -72,13 +76,20 @@ func sponsor_daily_income() -> int:
 func lighting_revenue_multiplier() -> float:
 	return 1.0 + lighting_level * 0.008
 
+func grandstand_daily_income() -> int:
+	return grandstand_level * 40
+
+func grandstand_reputation_per_race() -> int:
+	@warning_ignore("integer_division")
+	return grandstand_level / 5
+
 func total_daily_passive_income() -> int:
-	return merch_daily_income() + sponsor_daily_income()
+	return merch_daily_income() + sponsor_daily_income() + grandstand_daily_income()
 
 
 # --- API --------------------------------------------------------------------
 func facility_names() -> Array[String]:
-	return ["cafeteria", "pit_lane", "lounge", "merch_shop", "sponsor_boards", "lighting"]
+	return ["cafeteria", "pit_lane", "lounge", "merch_shop", "sponsor_boards", "lighting", "grandstand"]
 
 func display_name(facility: String) -> String:
 	return _NAMES.get(facility, facility)
@@ -94,6 +105,7 @@ func get_level(facility: String) -> int:
 		"merch_shop":     return merch_shop_level
 		"sponsor_boards": return sponsor_boards_level
 		"lighting":       return lighting_level
+		"grandstand":     return grandstand_level
 	return 0
 
 func can_upgrade(facility: String) -> bool:
@@ -118,6 +130,7 @@ func upgrade(facility: String) -> bool:
 		"merch_shop":     merch_shop_level     += 1
 		"sponsor_boards": sponsor_boards_level += 1
 		"lighting":       lighting_level       += 1
+		"grandstand":     grandstand_level     += 1
 	EventBus.facility_upgraded.emit(facility, get_level(facility))
 	return true
 
@@ -144,4 +157,9 @@ func effect_text(facility: String) -> String:
 			return "€%d sponsor income/day" % [sponsor_daily_income()]
 		"lighting":
 			return "+%.1f%% revenue multiplier" % [lighting_revenue_multiplier() * 100.0 - 100.0]
+		"grandstand":
+			return "€%d/day  +%d rep/race" % [
+				grandstand_daily_income(),
+				grandstand_reputation_per_race()
+			]
 	return ""

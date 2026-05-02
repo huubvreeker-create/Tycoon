@@ -513,8 +513,11 @@ func _finish_race(c: Customer) -> void:
 	var cafe_bonus := int(Facilities.cafeteria_revenue_per_customer())
 	if cafe_bonus > 0:
 		EconomyManager.add_revenue("Cafeteria", cafe_bonus)
-	# Reputation: base + suit bonus + lounge bonus per finished race.
-	var rep := c.reputation_delta() + KartComponents.suit_reputation_bonus() + Facilities.lounge_reputation_per_race()
+	# Reputation: base + suit bonus + lounge bonus + grandstand bonus per race.
+	var rep := c.reputation_delta() \
+		+ KartComponents.suit_reputation_bonus() \
+		+ Facilities.lounge_reputation_per_race() \
+		+ Facilities.grandstand_reputation_per_race()
 	GameManager.add_reputation(rep)
 	EventBus.race_finished.emit(track_id, multiplied)
 	EventBus.customer_left.emit(c.id, c.satisfaction)
