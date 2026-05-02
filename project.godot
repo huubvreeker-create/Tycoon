@@ -21,6 +21,7 @@ GameManager="*res://systems/game_manager.gd"
 KartComponents="*res://systems/kart_components.gd"
 Facilities="*res://systems/facilities.gd"
 Staff="*res://systems/staff.gd"
+Venues="*res://systems/venues.gd"
 DailyEvents="*res://systems/daily_events.gd"
 SaveManager="*res://systems/save_manager.gd"
 

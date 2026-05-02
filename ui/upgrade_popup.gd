@@ -13,10 +13,11 @@ extends PanelContainer
 @onready var tab_kart: Button          = %TabKart
 @onready var tab_facilities: Button    = %TabFacilities
 @onready var tab_staff: Button         = %TabStaff
+@onready var tab_empire: Button        = %TabEmpire
 @onready var upgrade_list: VBoxContainer = %UpgradeList
 
 var _track: Track = null
-var _active_tab: String = "track"  # "track" | "kart" | "facilities"
+var _active_tab: String = "track"  # "track" | "kart" | "facilities" | "staff" | "empire"
 
 # Cached style boxes loaded once.
 var _style_active: StyleBoxFlat
@@ -33,6 +34,7 @@ func _ready() -> void:
 	tab_kart.pressed.connect(func(): _switch_tab("kart"))
 	tab_facilities.pressed.connect(func(): _switch_tab("facilities"))
 	tab_staff.pressed.connect(func(): _switch_tab("staff"))
+	tab_empire.pressed.connect(func(): _switch_tab("empire"))
 
 	EventBus.cash_changed.connect(_refresh.unbind(1))
 	EventBus.track_level_changed.connect(_refresh.unbind(2))
@@ -48,8 +50,8 @@ func _ready() -> void:
 
 func open_for(kind: String, track_ref: Track) -> void:
 	_track = track_ref
-	# Allow any of the four tabs to be opened directly.
-	var tab := kind if kind in ["track", "kart", "facilities", "staff"] else "track"
+	# Allow any of the five tabs to be opened directly.
+	var tab := kind if kind in ["track", "kart", "facilities", "staff", "empire"] else "track"
 	visible = true
 	_switch_tab(tab)
 
@@ -66,6 +68,7 @@ func _update_tab_styles() -> void:
 		[tab_kart, "kart"],
 		[tab_facilities, "facilities"],
 		[tab_staff, "staff"],
+		[tab_empire, "empire"],
 	]:
 		var btn: Button = entry[0]
 		var is_active: bool = (_active_tab == entry[1])
@@ -101,6 +104,9 @@ func _build_rows() -> void:
 		"staff":
 			title_label.text = "Staff"
 			_add_staff_rows()
+		"empire":
+			title_label.text = "Empire"
+			_add_empire_rows()
 
 
 # ---------------------------------------------------------------------------
@@ -291,6 +297,58 @@ func _make_hire_callable(role: String) -> Callable:
 	return func():
 		Staff.hire(role)
 		_build_rows()
+
+
+# ---------------------------------------------------------------------------
+# EMPIRE TAB — satellite venues that grow the player's empire as
+# they progress through the home track's tiers.
+# ---------------------------------------------------------------------------
+func _add_empire_rows() -> void:
+	_add_section_header(
+		"SATELLITE VENUES  —  €%d / day" % Venues.total_daily_income())
+	var current_tier: int = _track.track_tier()
+	for vid: String in Venues.venue_ids():
+		var data := Venues.venue_data(vid)
+		var color: Color = data.get("color_top", Color.WHITE)
+		var lv: int = Venues.get_level(vid)
+		var unlocked: bool = Venues.is_unlocked(vid, current_tier)
+		var label: String
+		var max_label: String = "MAX LEVEL"
+		var detail: String
+		var action_label: String = "Upgrade"
+		if not unlocked:
+			label = "LOCKED"
+			max_label = "Requires Track Tier %d" % Venues.unlock_tier(vid)
+			detail = "Reach track tier %d to acquire this venue. Region: %s." % [
+				Venues.unlock_tier(vid), Venues.region(vid)
+			]
+		elif lv == 0:
+			label = "FOR SALE"
+			detail = "Region: %s.\nPays €%d/day at lvl 1, scales each upgrade." % [
+				Venues.region(vid),
+				int(round(float(data.get("base_income", 0)) * float(data.get("income_growth", 1.05))))
+			]
+			action_label = "Acquire"
+		else:
+			label = "Lvl %d / %d" % [lv, Venues.MAX_LEVEL]
+			detail = "Region: %s.\n€%d/day at current level." % [
+				Venues.region(vid), Venues.daily_income_for(vid)
+			]
+		_add_upgrade_row(
+			color,
+			Venues.display_name(vid),
+			label,
+			float(lv),
+			float(Venues.MAX_LEVEL),
+			detail,
+			unlocked and Venues.can_upgrade(vid),
+			Venues.upgrade_cost(vid),
+			func(v := vid):
+				Venues.upgrade(v)
+				_build_rows(),
+			action_label,
+			max_label
+		)
 
 
 # ---------------------------------------------------------------------------

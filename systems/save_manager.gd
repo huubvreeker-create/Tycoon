@@ -145,6 +145,7 @@ func _serialize() -> Dictionary:
 			"marketing":      Facilities.marketing_level,
 		},
 		"staff": Staff.counts.duplicate(),
+		"venues": Venues.to_save_dict(),
 		"daily_events": {
 			"arrival_multiplier_today":      DailyEvents.arrival_multiplier_today,
 			"maintenance_multiplier_today":  DailyEvents.maintenance_multiplier_today,
@@ -197,6 +198,8 @@ func _deserialize(data: Dictionary) -> void:
 		var st: Dictionary = data["staff"]
 		for role: String in Staff.role_names():
 			Staff.counts[role] = int(st.get(role, 0))
+	if data.has("venues"):
+		Venues.from_save_dict(data["venues"] as Dictionary)
 	if data.has("daily_events"):
 		var de: Dictionary = data["daily_events"]
 		DailyEvents.arrival_multiplier_today     = float(de.get("arrival_multiplier_today", 1.0))
@@ -254,7 +257,8 @@ func _compute_offline_progress(elapsed_seconds: float, track_data: Dictionary) -
 	var capped_seconds: float = capped_hours * 3600.0
 
 	# Estimate the venue's earnings rate per real-time second.
-	var passive_per_day: float = float(Facilities.total_daily_passive_income())
+	var passive_per_day: float = float(Facilities.total_daily_passive_income()) \
+		+ float(Venues.total_daily_income())
 	var kart_count: int = int(track_data.get("kart_count", 5))
 	var kart_lvl: int = int(track_data.get("kart_level", 1))
 	var track_lvl: int = int(track_data.get("track_level", 1))
@@ -319,6 +323,9 @@ func reset_to_defaults() -> void:
 	# Staff
 	for role: String in Staff.role_names():
 		Staff.counts[role] = 0
+	# Empire venues
+	for vid: String in Venues.venue_ids():
+		Venues.levels[vid] = 0
 	# Daily events
 	DailyEvents.arrival_multiplier_today = 1.0
 	DailyEvents.maintenance_multiplier_today = 1.0

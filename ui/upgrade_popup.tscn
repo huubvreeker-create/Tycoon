@@ -142,6 +142,17 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_tab_inactive")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_tab_inactive")
 theme_override_styles/focus = SubResource("StyleBoxFlat_tab_inactive")
 
+[node name="TabEmpire" type="Button" parent="VBox/TabBar"]
+unique_name_in_owner = true
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 44)
+text = "EMPIRE"
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_tab_inactive")
+theme_override_styles/hover = SubResource("StyleBoxFlat_tab_inactive")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_tab_inactive")
+theme_override_styles/focus = SubResource("StyleBoxFlat_tab_inactive")
+
 [node name="ScrollContainer" type="ScrollContainer" parent="VBox"]
 size_flags_vertical = 3
 

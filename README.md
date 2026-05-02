@@ -2,7 +2,11 @@
 
 A management / tycoon simulation built in **Godot 4 + GDScript** where you grow a single indoor kart track into a global motorsport empire.
 
-> **Status:** Phase 1 — Single playable track. Karts circulate on a procedurally-built oval, the HUD reflects live state from the autoloaded systems, and the architecture is ready for the next phases.
+> **Status:** All MVP phases (1-7) complete. Polish (Phase 8) is ongoing.
+> The single home venue scales across 10 tiers (Backyard → F1) with a
+> fixed pit straight, per-tier south-loop layouts, five kart-component
+> subsystems, nine upgradable facilities, five staff roles and four
+> empire-expansion satellite venues.
 
 ---
 
@@ -10,14 +14,14 @@ A management / tycoon simulation built in **Godot 4 + GDScript** where you grow 
 
 | Phase | Scope | Status |
 | :---: | --- | :---: |
-| 1 | Single playable track | Done |
-| 2 | Economy (day clock, ticket price, costs) | Next |
-| 3 | Customer simulation (queue, satisfaction, reviews) | Planned |
-| 4 | Upgrades (track, facility, operations) | Planned |
-| 5 | Staff (mechanic, operator, cleaner, manager) | Planned |
-| 6 | Expansion (Tier 1 → 4 venues) | Planned |
-| 7 | Events (positive / negative) | Planned |
-| 8 | Polish | Planned |
+| 1 | Single playable track (10 tiers, F1-style layout) | Done |
+| 2 | Economy (day clock, ticket price, costs, passive income) | Done |
+| 3 | Customer simulation (queue, satisfaction, walkouts) | Done |
+| 4 | Upgrades (track, facility, kart components) | Done |
+| 5 | Staff (5 roles, tier-gated headcount caps) | Done |
+| 6 | Expansion (4 satellite venues unlocked tier 4 / 6 / 8 / 10) | Done |
+| 7 | Events (random daily modifiers) | Done |
+| 8 | Polish (visuals, balance, mobile UX) | Ongoing |
 
 ---
 
