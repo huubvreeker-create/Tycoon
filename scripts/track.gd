@@ -80,7 +80,7 @@ var click_collider: CollisionShape3D
 var ribbon_material: StandardMaterial3D
 var rumble_material: StandardMaterial3D
 
-var karts: Array[Kart] = []
+var karts: Array = []                 # plain Array (typed Array[Kart] could swallow appends silently on some Godot builds)
 var queue: Array[Customer] = []
 var racing: Array[Customer] = []
 
@@ -371,7 +371,26 @@ func _build_click_area() -> void:
 
 
 func _add_kart_node(initial_spawn: bool) -> void:
-	var kart: Kart = KART_SCENE.instantiate()
+	# 1. Instantiate the kart scene. Use a plain Node first; some Godot
+	#    builds were strict about the typed assignment and silently
+	#    dropped the kart when the runtime type-check fired.
+	var instance: Node = KART_SCENE.instantiate()
+	if instance == null:
+		push_error("[Track] KART_SCENE.instantiate() returned null")
+		return
+	# 2. Cast to Kart explicitly so we can detect a missing script.
+	var kart := instance as Kart
+	if kart == null:
+		push_error("[Track] Instantiated kart is not a Kart (is the script attached to res://scenes/kart.tscn?)")
+		instance.queue_free()
+		return
+	# 3. Verify the path exists before parenting.
+	if path == null or not is_instance_valid(path):
+		push_error("[Track] No valid path to attach kart to")
+		kart.queue_free()
+		return
+	# 4. Configure colour + level BEFORE add_child so they're visible
+	#    in the kart's first _ready frame.
 	var palette := [
 		Color(0.96, 0.27, 0.36),
 		Color(0.99, 0.75, 0.18),
@@ -384,9 +403,14 @@ func _add_kart_node(initial_spawn: bool) -> void:
 	]
 	kart.kart_color = palette[karts.size() % palette.size()]
 	kart.set_level(kart_level)
+	# 5. Parent under the path (this triggers Kart._ready).
 	path.add_child(kart)
+	# 6. Spread starting progress so the initial fleet doesn't pile up
+	#    on top of itself on the first curve point.
 	kart.progress = float(karts.size()) * 4.0
+	# 7. Track the live instance.
 	karts.append(kart)
+	print("[Track] Kart added — fleet size now %d" % karts.size())
 	if not initial_spawn:
 		kart.flash_spawn()
 

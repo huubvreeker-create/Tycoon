@@ -62,10 +62,11 @@ func _on_load() -> void:
 
 
 func _on_delete() -> void:
-	if SaveManager.delete_save():
-		status_label.text = "Save deleted"
-		status_label.add_theme_color_override("font_color", Color(0.99, 0.75, 0.18))
-		_refresh()
+	# Wipe the save AND reset every autoload back to defaults, then
+	# reload the scene so the player gets a clean tier-1 venue.
+	SaveManager.delete_save()
+	SaveManager.reset_to_defaults()
+	get_tree().reload_current_scene()
 
 
 func _on_saved_signal(_day: int) -> void:

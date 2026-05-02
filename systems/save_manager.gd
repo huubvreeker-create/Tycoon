@@ -278,3 +278,45 @@ func consume_offline_summary() -> Dictionary:
 	var s := offline_summary.duplicate()
 	offline_summary = {}
 	return s
+
+
+# ---------------------------------------------------------------------------
+# Hard reset (used by the Settings popup's "Reset Game" button)
+# ---------------------------------------------------------------------------
+func reset_to_defaults() -> void:
+	# Economy
+	EconomyManager.cash = EconomyManager.STARTING_CASH
+	EconomyManager.revenue_today = 0
+	EconomyManager.expenses_today = 0
+	EventBus.cash_changed.emit(EconomyManager.cash)
+	# Game state
+	GameManager.day = 1
+	GameManager.reputation = 0
+	GameManager.ticket_price = GameManager.TICKET_DEFAULT
+	GameManager._day_time_left = GameManager.DAY_LENGTH_SECONDS
+	# Components
+	KartComponents.engine_level = 1
+	KartComponents.tires_level = 1
+	KartComponents.chassis_level = 1
+	KartComponents.suit_level = 1
+	KartComponents.brakes_level = 1
+	# Facilities
+	Facilities.cafeteria_level = 0
+	Facilities.pit_lane_level = 0
+	Facilities.lounge_level = 0
+	Facilities.merch_shop_level = 0
+	Facilities.sponsor_boards_level = 0
+	Facilities.lighting_level = 0
+	# Staff
+	for role: String in Staff.role_names():
+		Staff.counts[role] = 0
+	# Daily events
+	DailyEvents.arrival_multiplier_today = 1.0
+	DailyEvents.maintenance_multiplier_today = 1.0
+	DailyEvents.revenue_multiplier_today = 1.0
+	DailyEvents.satisfaction_bonus_today = 0.0
+	DailyEvents.active_event = {}
+	# Save manager bookkeeping
+	pending_track_state = {}
+	just_loaded = false
+	offline_summary = {}

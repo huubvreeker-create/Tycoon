@@ -74,9 +74,10 @@ theme_override_font_sizes/font_size = 16
 
 [node name="DeleteSaveButton" type="Button" parent="Panel/VBox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 48)
-text = "Delete Save"
-theme_override_font_sizes/font_size = 14
+custom_minimum_size = Vector2(0, 56)
+text = "Reset Game (delete save + restart)"
+theme_override_font_sizes/font_size = 15
+theme_override_colors/font_color = Color(0.96, 0.27, 0.36, 1)
 
 [node name="StatusLabel" type="Label" parent="Panel/VBox"]
 unique_name_in_owner = true
