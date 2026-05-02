@@ -23,6 +23,43 @@ class_name Track
 
 const KART_SCENE: PackedScene = preload("res://scenes/kart.tscn")
 
+# --- F1-style team palette --------------------------------------------------
+# Ten team livery slots, applied in pairs to karts (karts 0+1 share
+# team 0, karts 2+3 share team 1, etc.) and applied 1-per-bay to the
+# pit garage doors. Two of the teams have an accent colour for
+# split-livery doors / kart stripes.
+const TEAM_PRIMARY_COLORS: Array[Color] = [
+	Color(0.55, 0.55, 0.58),  # 1  Grey
+	Color(0.16, 0.28, 0.85),  # 2  Blue + Red accent
+	Color(0.92, 0.15, 0.20),  # 3  Red
+	Color(1.00, 0.55, 0.18),  # 4  Orange
+	Color(0.18, 0.62, 0.34),  # 5  Green
+	Color(0.40, 0.75, 0.95),  # 6  Light Blue
+	Color(0.06, 0.14, 0.42),  # 7  Navy + White accent (Williams-style)
+	Color(0.96, 0.97, 1.00),  # 8  White
+	Color(0.10, 0.25, 0.68),  # 9  Royal Dark Blue (distinct from #7)
+	Color(0.10, 0.10, 0.13),  # 10 Black
+]
+const TEAM_ACCENT_COLORS: Array[Color] = [
+	Color(0.0, 0.0, 0.0, 0.0),  # 1  no accent
+	Color(0.96, 0.20, 0.25),    # 2  red stripe
+	Color(0.0, 0.0, 0.0, 0.0),  # 3
+	Color(0.0, 0.0, 0.0, 0.0),  # 4
+	Color(0.0, 0.0, 0.0, 0.0),  # 5
+	Color(0.0, 0.0, 0.0, 0.0),  # 6
+	Color(0.95, 0.96, 0.98),    # 7  white stripe
+	Color(0.0, 0.0, 0.0, 0.0),  # 8
+	Color(0.0, 0.0, 0.0, 0.0),  # 9
+	Color(0.0, 0.0, 0.0, 0.0),  # 10
+]
+
+
+# Helper: alpha=0 marker means "no accent for this team".
+func team_has_accent(team_index: int) -> bool:
+	if team_index < 0 or team_index >= TEAM_ACCENT_COLORS.size():
+		return false
+	return TEAM_ACCENT_COLORS[team_index].a > 0.01
+
 # --- 10-tier progression -----------------------------------------------------
 # Each entry in TIER_LEVEL_CAPS is the cumulative track_level at which the
 # tier ENDS. Tier 1 covers track_level 1..25, tier 2 covers 26..50, etc.
@@ -964,18 +1001,13 @@ func _add_kart_node(initial_spawn: bool) -> void:
 		kart.queue_free()
 		return
 	# 4. Configure colour + level BEFORE add_child so they're visible
-	#    in the kart's first _ready frame.
-	var palette := [
-		Color(0.96, 0.27, 0.36),
-		Color(0.99, 0.75, 0.18),
-		Color(0.13, 0.83, 0.96),
-		Color(0.55, 0.92, 0.38),
-		Color(0.86, 0.42, 0.98),
-		Color(1.00, 0.55, 0.20),
-		Color(0.40, 0.65, 1.00),
-		Color(0.95, 0.95, 0.95),
-	]
-	kart.kart_color = palette[karts.size() % palette.size()]
+	#    in the kart's first _ready frame. Karts are paired by team:
+	#    karts 0+1 share team 0, karts 2+3 share team 1, etc., wrapping
+	#    after 10 teams. Mirrors the F1 paddock model where every team
+	#    fields exactly two cars sharing one garage.
+	@warning_ignore("integer_division")
+	var team_index: int = (karts.size() / 2) % TEAM_PRIMARY_COLORS.size()
+	kart.kart_color = TEAM_PRIMARY_COLORS[team_index]
 	kart.set_level(kart_level)
 	# 5. Parent under the path (this triggers Kart._ready).
 	path.add_child(kart)

@@ -25,20 +25,9 @@ const _SPONSOR_COLORS := [
 	Color(0.86, 0.42, 0.98),
 	Color(1.00, 0.55, 0.20),
 ]
-# Per-garage team colours so each pit bay has its own identity, like
-# a real F1 paddock with 10+ teams sharing one pit lane.
-const _GARAGE_TEAM_COLORS: Array[Color] = [
-	Color(0.96, 0.27, 0.36),  # red
-	Color(0.13, 0.45, 0.96),  # blue
-	Color(0.20, 0.85, 0.55),  # green
-	Color(0.99, 0.75, 0.18),  # yellow
-	Color(0.86, 0.42, 0.98),  # purple
-	Color(1.00, 0.55, 0.20),  # orange
-	Color(0.13, 0.83, 0.96),  # cyan
-	Color(0.95, 0.95, 0.95),  # white
-	Color(0.95, 0.30, 0.65),  # pink
-	Color(0.50, 0.30, 0.95),  # indigo
-]
+# Pit-bay team identities are sourced from Track.TEAM_PRIMARY_COLORS
+# at build time so the garage doors and the karts always wear the
+# same liveries.
 
 @export var track_path: NodePath
 
@@ -526,9 +515,14 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 		else:
 			bay_p = float(i) / float(bays - 1)
 		var bay_x: float = lerpf(garage_first_x, garage_last_x, bay_p)
-		# Each bay gets a different team colour for the door — looks
-		# like real F1 paddock with multiple teams sharing the pit lane.
-		var team_color: Color = _GARAGE_TEAM_COLORS[i % _GARAGE_TEAM_COLORS.size()]
+		# Pull the team's primary + optional accent from the shared
+		# track palette so the garage and the kart pair share livery.
+		var team_index: int = i % _track.TEAM_PRIMARY_COLORS.size()
+		var team_color: Color = _track.TEAM_PRIMARY_COLORS[team_index]
+		var has_accent: bool = _track.team_has_accent(team_index)
+		var accent_color: Color = (
+			_track.TEAM_ACCENT_COLORS[team_index] if has_accent else team_color
+		)
 		# Garage body — neutral dark grey so the team doors pop against it.
 		var garage := MeshInstance3D.new()
 		var gbm := BoxMesh.new()
@@ -541,21 +535,54 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 		garage.material_override = gmat
 		garage.position = Vector3(bay_x, bay_h * 0.5, garage_z)
 		parent.add_child(garage)
-		# Team-coloured door panel facing the pit lane (south face).
-		var door := MeshInstance3D.new()
-		var dbm2 := BoxMesh.new()
-		dbm2.size = Vector3(bay_w * 0.78, bay_h * 0.75, 0.06)
-		door.mesh = dbm2
-		var door_mat := StandardMaterial3D.new()
-		door_mat.albedo_color = team_color
-		door_mat.emission_enabled = true
-		door_mat.emission = team_color
-		door_mat.emission_energy_multiplier = 0.6
-		door.material_override = door_mat
-		door.position = Vector3(bay_x, bay_h * 0.4,
-			garage_z - bay_d * 0.5 - 0.04)
-		parent.add_child(door)
-		# Roof tag block in the same team colour above the door.
+		# Team-coloured door panel facing the pit lane (south face). For
+		# split-livery teams (Blue+Red, DarkBlue+White), draw the door
+		# as TOP HALF primary + BOTTOM HALF accent.
+		var door_z: float = garage_z - bay_d * 0.5 - 0.04
+		var door_full_w: float = bay_w * 0.78
+		var door_full_h: float = bay_h * 0.75
+		if has_accent:
+			# Top half = primary, bottom half = accent.
+			var door_top := MeshInstance3D.new()
+			var dbm_top := BoxMesh.new()
+			dbm_top.size = Vector3(door_full_w, door_full_h * 0.5, 0.06)
+			door_top.mesh = dbm_top
+			var dt_mat := StandardMaterial3D.new()
+			dt_mat.albedo_color = team_color
+			dt_mat.emission_enabled = true
+			dt_mat.emission = team_color
+			dt_mat.emission_energy_multiplier = 0.6
+			door_top.material_override = dt_mat
+			door_top.position = Vector3(bay_x,
+				bay_h * 0.4 + door_full_h * 0.25, door_z)
+			parent.add_child(door_top)
+			var door_bot := MeshInstance3D.new()
+			var dbm_bot := BoxMesh.new()
+			dbm_bot.size = Vector3(door_full_w, door_full_h * 0.5, 0.06)
+			door_bot.mesh = dbm_bot
+			var db_mat := StandardMaterial3D.new()
+			db_mat.albedo_color = accent_color
+			db_mat.emission_enabled = true
+			db_mat.emission = accent_color
+			db_mat.emission_energy_multiplier = 0.6
+			door_bot.material_override = db_mat
+			door_bot.position = Vector3(bay_x,
+				bay_h * 0.4 - door_full_h * 0.25, door_z)
+			parent.add_child(door_bot)
+		else:
+			var door := MeshInstance3D.new()
+			var dbm2 := BoxMesh.new()
+			dbm2.size = Vector3(door_full_w, door_full_h, 0.06)
+			door.mesh = dbm2
+			var door_mat := StandardMaterial3D.new()
+			door_mat.albedo_color = team_color
+			door_mat.emission_enabled = true
+			door_mat.emission = team_color
+			door_mat.emission_energy_multiplier = 0.6
+			door.material_override = door_mat
+			door.position = Vector3(bay_x, bay_h * 0.4, door_z)
+			parent.add_child(door)
+		# Roof tag block in the team's primary colour above the door.
 		_make_box(parent,
 			Vector3(bay_w * 0.7, 0.16, 0.18),
 			Vector3(bay_x, bay_h + 0.10,
