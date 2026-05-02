@@ -60,21 +60,22 @@ const TIER_RACE_DURATION := {
 # the start/finish straight on the +Z side is FIXED across all tiers.
 # Only the south loop (the rest of the circuit) grows and gains
 # corners as the player tiers up.
-const STRAIGHT_HALF: float = 8.0       # half-length of main straight (= 16 m total)
-const STRAIGHT_Z: float = 7.0          # z-coord of the straight (north of origin)
+const STRAIGHT_HALF: float = 14.0      # half-length of main straight (= 28 m total — fits 12 garages)
+const STRAIGHT_Z: float = 9.0          # z-coord of the straight (north of origin)
 
 # Per-tier south LOOP. Loop endpoints on the north side are at
 # (±loop_rx, STRAIGHT_Z); loop dips south to (0, STRAIGHT_Z -
-# loop_depth) at its apex. The loop GROWS per tier — wider east-west
-# AND deeper south — so the player visibly gets a bigger circuit each
-# rollover, but the central pit straight stays put.
+# loop_depth) at its apex. The loop GROWS DRAMATICALLY per tier —
+# tier 1 is already a small kart loop, tier 10 is a full F1-scale
+# circuit. Each tier adds at least 4 m of loop_rx and depth so the
+# extra corners have real space to spread out into.
 const TIER_LOOP_RX := {
-	1:  8.0, 2:  9.0, 3: 10.5, 4: 12.0, 5: 14.0,
-	6: 16.0, 7: 18.5, 8: 21.0, 9: 24.0, 10: 28.0
+	1: 18.0, 2: 22.0, 3: 27.0, 4: 33.0, 5: 40.0,
+	6: 48.0, 7: 56.0, 8: 64.0, 9: 72.0, 10: 80.0
 }
 const TIER_LOOP_DEPTH := {
-	1:  9.0, 2: 11.0, 3: 13.5, 4: 16.0, 5: 18.5,
-	6: 21.0, 7: 23.5, 8: 26.0, 9: 29.0, 10: 33.0
+	1: 14.0, 2: 19.0, 3: 25.0, 4: 32.0, 5: 40.0,
+	6: 48.0, 7: 57.0, 8: 66.0, 9: 76.0, 10: 88.0
 }
 # Backwards-compat aliases. Both maps duplicate the loop tables —
 # TIER_TRACK_RX = horizontal half-extent (sets X-side facility
@@ -82,135 +83,144 @@ const TIER_LOOP_DEPTH := {
 # The new asymmetric helpers (north_extent_z / south_extent_z) on
 # the API expose the proper north/south extents separately.
 const TIER_TRACK_RX := {
-	1:  8.0, 2:  9.0, 3: 10.5, 4: 12.0, 5: 14.0,
-	6: 16.0, 7: 18.5, 8: 21.0, 9: 24.0, 10: 28.0
+	1: 18.0, 2: 22.0, 3: 27.0, 4: 33.0, 5: 40.0,
+	6: 48.0, 7: 56.0, 8: 64.0, 9: 72.0, 10: 80.0
 }
 const TIER_TRACK_RZ := {
-	1:  9.0, 2: 11.0, 3: 13.5, 4: 16.0, 5: 18.5,
-	6: 21.0, 7: 23.5, 8: 26.0, 9: 29.0, 10: 33.0
+	1: 14.0, 2: 19.0, 3: 25.0, 4: 32.0, 5: 40.0,
+	6: 48.0, 7: 57.0, 8: 66.0, 9: 76.0, 10: 88.0
 }
 
 const TIER_ASPHALT_WIDTH := {
-	1: 3.0, 2: 3.4, 3: 3.8, 4: 4.2, 5: 4.6,
-	6: 5.0, 7: 5.4, 8: 5.8, 9: 6.4, 10: 7.0
+	1: 3.4, 2: 3.8, 3: 4.2, 4: 4.6, 5: 5.0,
+	6: 5.4, 7: 5.8, 8: 6.2, 9: 6.6, 10: 7.0
 }
 ## Per-tier south-LOOP recipes. The base loop is a half-oval from
 ## (+loop_rx, STRAIGHT_Z) curving south to (0, STRAIGHT_Z - loop_depth)
-## back to (-loop_rx, STRAIGHT_Z). Each tier layers extra features on
-## top of that base shape:
+## back to (-loop_rx, STRAIGHT_Z). Each tier layers extra features:
 ##
-##   chicanes: array of {start, end, amp, lobes}
-##     A perpendicular sin-wave displacement of `lobes` cycles across
-##     the loop arc range [start, end], where ψ ∈ [0, π] (ψ=0 at the
-##     east end of the straight, ψ=π/2 at the south apex, ψ=π at the
-##     west end). Creates left-right S-bends.
-##   kinks: array of {center, half_width, indent}
-##     Smooth INWARD pull centred at loop angle ψ_center, dropping off
-##     over `half_width` radians on each side. Adds an extra "infield"
-##     corner without a full loop-back.
+##   chicanes: {start, end, amp, lobes}
+##     Perpendicular sin-wave displacement of `lobes` cycles across
+##     ψ ∈ [start, end] (ψ ∈ [0, π] = east end → south apex → west end).
+##   kinks: {center, half_width, indent}
+##     Smooth INWARD pull centred at ψ_center over ±half_width.
 ##
-## Per the design: tier 1 = clean half-oval (no extra corners), each
-## subsequent tier adds 1-2 chicanes/kinks so the south loop gains
-## complexity while the north straight stays identical across all tiers.
+## Design rule: each tier KEEPS all of the previous tier's corners and
+## ADDS 1-3 new ones in a fresh part of the loop. By tier 10 the loop
+## has accumulated all the corners the player has built — like a real
+## F1 circuit that's gained sections over the years.
+##
+## Amplitudes scale with track size — by tier 10 chicanes sweep 6-7 m
+## off the racing line, and kinks indent 7-8 m, so each corner is
+## clearly visible from the tycoon top-down view.
 const TIER_LAYOUT := {
-	# Tier 1 — clean half-oval loop, no extra corners.
+	# Tier 1 — backyard track: smooth half-oval, no extra corners.
 	1: { "chicanes": [], "kinks": [] },
-	# Tier 2 — adds a single chicane near the south apex.
+	# Tier 2 — first chicane at the south apex (the "main complex").
 	2: {
 		"chicanes": [
-			{"start": 0.40 * PI, "end": 0.60 * PI, "amp": 1.4, "lobes": 1},
+			{"start": 0.40 * PI, "end": 0.60 * PI, "amp": 3.0, "lobes": 1},
 		],
 		"kinks": []
 	},
-	# Tier 3 — south-apex chicane + east-side kink (extra entry corner).
+	# Tier 3 — adds an east-side hairpin kink (entry detour).
 	3: {
 		"chicanes": [
-			{"start": 0.38 * PI, "end": 0.62 * PI, "amp": 1.6, "lobes": 1},
+			{"start": 0.40 * PI, "end": 0.60 * PI, "amp": 3.4, "lobes": 1},
 		],
 		"kinks": [
-			{"center": 0.18 * PI, "half_width": 0.18 * PI, "indent": 1.4},
+			{"center": 0.15 * PI, "half_width": 0.13 * PI, "indent": 3.5},
 		]
 	},
-	# Tier 4 — adds a west-side kink (mirror corner on exit).
+	# Tier 4 — adds a mirroring west-side hairpin kink.
 	4: {
 		"chicanes": [
-			{"start": 0.38 * PI, "end": 0.62 * PI, "amp": 1.8, "lobes": 1},
+			{"start": 0.40 * PI, "end": 0.60 * PI, "amp": 3.8, "lobes": 1},
 		],
 		"kinks": [
-			{"center": 0.18 * PI, "half_width": 0.18 * PI, "indent": 1.6},
-			{"center": 0.82 * PI, "half_width": 0.18 * PI, "indent": 1.6},
+			{"center": 0.15 * PI, "half_width": 0.13 * PI, "indent": 4.0},
+			{"center": 0.85 * PI, "half_width": 0.13 * PI, "indent": 4.0},
 		]
 	},
-	# Tier 5 — wider south chicane gains a second lobe (proper S-S).
+	# Tier 5 — second south chicane next to the original (now S-S complex).
 	5: {
 		"chicanes": [
-			{"start": 0.30 * PI, "end": 0.70 * PI, "amp": 2.0, "lobes": 2},
+			{"start": 0.30 * PI, "end": 0.50 * PI, "amp": 4.2, "lobes": 1},
+			{"start": 0.50 * PI, "end": 0.70 * PI, "amp": 4.2, "lobes": 1},
 		],
 		"kinks": [
-			{"center": 0.18 * PI, "half_width": 0.18 * PI, "indent": 1.8},
-			{"center": 0.82 * PI, "half_width": 0.18 * PI, "indent": 1.8},
+			{"center": 0.15 * PI, "half_width": 0.13 * PI, "indent": 4.4},
+			{"center": 0.85 * PI, "half_width": 0.13 * PI, "indent": 4.4},
 		]
 	},
-	# Tier 6 — adds a SECOND chicane between the entry kink and apex.
+	# Tier 6 — adds a SE infield section (between east kink and S-S).
 	6: {
 		"chicanes": [
-			{"start": 0.30 * PI, "end": 0.50 * PI, "amp": 2.2, "lobes": 1},
-			{"start": 0.55 * PI, "end": 0.75 * PI, "amp": 2.2, "lobes": 1},
+			{"start": 0.22 * PI, "end": 0.32 * PI, "amp": 4.6, "lobes": 1},
+			{"start": 0.30 * PI, "end": 0.50 * PI, "amp": 4.6, "lobes": 1},
+			{"start": 0.50 * PI, "end": 0.70 * PI, "amp": 4.6, "lobes": 1},
 		],
 		"kinks": [
-			{"center": 0.15 * PI, "half_width": 0.15 * PI, "indent": 2.0},
-			{"center": 0.85 * PI, "half_width": 0.15 * PI, "indent": 2.0},
+			{"center": 0.13 * PI, "half_width": 0.11 * PI, "indent": 4.8},
+			{"center": 0.85 * PI, "half_width": 0.13 * PI, "indent": 4.8},
 		]
 	},
-	# Tier 7 — adds a third chicane (now 3 distinct S-sections).
+	# Tier 7 — adds a SW infield section (mirror of tier 6's addition).
 	7: {
 		"chicanes": [
-			{"start": 0.22 * PI, "end": 0.40 * PI, "amp": 2.4, "lobes": 1},
-			{"start": 0.42 * PI, "end": 0.58 * PI, "amp": 2.4, "lobes": 1},
-			{"start": 0.60 * PI, "end": 0.78 * PI, "amp": 2.4, "lobes": 1},
+			{"start": 0.22 * PI, "end": 0.32 * PI, "amp": 5.0, "lobes": 1},
+			{"start": 0.30 * PI, "end": 0.50 * PI, "amp": 5.0, "lobes": 1},
+			{"start": 0.50 * PI, "end": 0.70 * PI, "amp": 5.0, "lobes": 1},
+			{"start": 0.68 * PI, "end": 0.78 * PI, "amp": 5.0, "lobes": 1},
 		],
 		"kinks": [
-			{"center": 0.13 * PI, "half_width": 0.13 * PI, "indent": 2.2},
-			{"center": 0.87 * PI, "half_width": 0.13 * PI, "indent": 2.2},
+			{"center": 0.13 * PI, "half_width": 0.11 * PI, "indent": 5.2},
+			{"center": 0.87 * PI, "half_width": 0.11 * PI, "indent": 5.2},
 		]
 	},
-	# Tier 8 — bigger amplitudes on the chicanes, kinks bite deeper.
+	# Tier 8 — south complex gets a second-lobe S-S section.
 	8: {
 		"chicanes": [
-			{"start": 0.20 * PI, "end": 0.40 * PI, "amp": 2.8, "lobes": 1},
-			{"start": 0.42 * PI, "end": 0.58 * PI, "amp": 2.6, "lobes": 2},
-			{"start": 0.60 * PI, "end": 0.80 * PI, "amp": 2.8, "lobes": 1},
+			{"start": 0.22 * PI, "end": 0.32 * PI, "amp": 5.4, "lobes": 1},
+			{"start": 0.32 * PI, "end": 0.50 * PI, "amp": 5.4, "lobes": 2},
+			{"start": 0.50 * PI, "end": 0.68 * PI, "amp": 5.4, "lobes": 2},
+			{"start": 0.68 * PI, "end": 0.78 * PI, "amp": 5.4, "lobes": 1},
 		],
 		"kinks": [
-			{"center": 0.12 * PI, "half_width": 0.12 * PI, "indent": 2.6},
-			{"center": 0.88 * PI, "half_width": 0.12 * PI, "indent": 2.6},
+			{"center": 0.12 * PI, "half_width": 0.10 * PI, "indent": 5.6},
+			{"center": 0.88 * PI, "half_width": 0.10 * PI, "indent": 5.6},
 		]
 	},
-	# Tier 9 — adds an extra mid-loop kink (3 kinks total, 3 chicanes).
+	# Tier 9 — adds a central mid-apex kink ("Eau Rouge"-style climb).
 	9: {
 		"chicanes": [
-			{"start": 0.20 * PI, "end": 0.40 * PI, "amp": 3.0, "lobes": 1},
-			{"start": 0.42 * PI, "end": 0.58 * PI, "amp": 2.8, "lobes": 2},
-			{"start": 0.60 * PI, "end": 0.80 * PI, "amp": 3.0, "lobes": 1},
+			{"start": 0.20 * PI, "end": 0.30 * PI, "amp": 5.8, "lobes": 1},
+			{"start": 0.30 * PI, "end": 0.46 * PI, "amp": 5.8, "lobes": 2},
+			{"start": 0.54 * PI, "end": 0.70 * PI, "amp": 5.8, "lobes": 2},
+			{"start": 0.70 * PI, "end": 0.80 * PI, "amp": 5.8, "lobes": 1},
 		],
 		"kinks": [
-			{"center": 0.10 * PI, "half_width": 0.10 * PI, "indent": 2.8},
-			{"center": 0.50 * PI, "half_width": 0.10 * PI, "indent": 2.4},
-			{"center": 0.90 * PI, "half_width": 0.10 * PI, "indent": 2.8},
+			{"center": 0.10 * PI, "half_width": 0.09 * PI, "indent": 6.0},
+			{"center": 0.50 * PI, "half_width": 0.06 * PI, "indent": 5.0},
+			{"center": 0.90 * PI, "half_width": 0.09 * PI, "indent": 6.0},
 		]
 	},
-	# Tier 10 — full F1 layout: 4 chicane sections, 3 deep kinks.
+	# Tier 10 — full F1 layout: maximum complexity. Six distinct
+	# chicane sections + four kinks across the lap.
 	10: {
 		"chicanes": [
-			{"start": 0.16 * PI, "end": 0.32 * PI, "amp": 3.2, "lobes": 1},
-			{"start": 0.34 * PI, "end": 0.48 * PI, "amp": 3.0, "lobes": 1},
-			{"start": 0.52 * PI, "end": 0.66 * PI, "amp": 3.0, "lobes": 1},
-			{"start": 0.68 * PI, "end": 0.84 * PI, "amp": 3.2, "lobes": 2},
+			{"start": 0.18 * PI, "end": 0.27 * PI, "amp": 6.2, "lobes": 1},
+			{"start": 0.27 * PI, "end": 0.40 * PI, "amp": 6.2, "lobes": 2},
+			{"start": 0.40 * PI, "end": 0.50 * PI, "amp": 6.2, "lobes": 1},
+			{"start": 0.50 * PI, "end": 0.60 * PI, "amp": 6.2, "lobes": 1},
+			{"start": 0.60 * PI, "end": 0.73 * PI, "amp": 6.2, "lobes": 2},
+			{"start": 0.73 * PI, "end": 0.82 * PI, "amp": 6.2, "lobes": 1},
 		],
 		"kinks": [
-			{"center": 0.09 * PI, "half_width": 0.09 * PI, "indent": 3.2},
-			{"center": 0.50 * PI, "half_width": 0.10 * PI, "indent": 2.8},
-			{"center": 0.91 * PI, "half_width": 0.09 * PI, "indent": 3.2},
+			{"center": 0.09 * PI, "half_width": 0.08 * PI, "indent": 6.5},
+			{"center": 0.34 * PI, "half_width": 0.05 * PI, "indent": 5.0},
+			{"center": 0.66 * PI, "half_width": 0.05 * PI, "indent": 5.0},
+			{"center": 0.91 * PI, "half_width": 0.08 * PI, "indent": 6.5},
 		]
 	},
 }
@@ -219,8 +229,8 @@ const TIER_LAYOUT := {
 # the tier's layout. Used by facility positioning so buildings,
 # sponsors and lights always sit clear of the wobbliest chicane.
 const TIER_WAVE_AMP := {
-	1: 0.0, 2: 1.4, 3: 1.6, 4: 1.8, 5: 2.0,
-	6: 2.4, 7: 2.8, 8: 3.2, 9: 3.6, 10: 4.0
+	1: 0.0, 2: 3.0, 3: 3.5, 4: 4.0, 5: 4.5,
+	6: 5.0, 7: 5.5, 8: 5.8, 9: 6.2, 10: 6.5
 }
 # Legacy — no longer drives the curve shape; kept so external code
 # referencing it still gets a sensible value.

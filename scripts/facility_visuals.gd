@@ -273,32 +273,31 @@ func _build_cafeteria(parent: Node3D, level: int) -> void:
 func _build_pit_lane(parent: Node3D, level: int) -> void:
 	# Pit complex aligned to the FIXED north straight. Same position
 	# and orientation on every tier — only the building scale and
-	# garage count change with the facility level. Geometry is now
-	# trivially axis-aligned (no curve sampling) because the main
-	# straight itself is straight.
+	# garage count change with the facility level.
 	#
 	# World layout (looking down +Y):
 	#   Track straight: x ∈ [-loop_rx, +loop_rx], z = STRAIGHT_Z
 	#   Pit straight:   x ∈ [-STRAIGHT_HALF, +STRAIGHT_HALF],
 	#                   z = STRAIGHT_Z + grass_gap + pit_w/2
 	#   Garages + paddock further north of the pit straight
+	#
+	# The pit ENTRY and EXIT ramps run from the pit-lane corners
+	# diagonally INTO the track at the loop's east/west extremes,
+	# overlapping the track asphalt so the merge looks continuous
+	# (just like real F1 yellow-paint blend zones).
 	var sh: float = _track.STRAIGHT_HALF
 	var straight_z: float = _track.STRAIGHT_Z
-	var asphalt_outer_z: float = straight_z \
-		+ _track.current_asphalt_width() * 0.5 + _RUMBLE_INSET_VAL
+	var loop_rx: float = _track.current_rx()
+	var asphalt_half: float = _track.current_asphalt_width() * 0.5
+	var asphalt_outer_z: float = straight_z + asphalt_half + _RUMBLE_INSET_VAL
 	var asphalt_color := Color(0.42, 0.44, 0.48)
-	var pit_lane_width: float = 2.6 + float(level) * 0.06
-	# Grass gap is constant across tiers (no chicane wobble on the
-	# straight to budget for) — keeps the pit lane in exactly the
-	# same spot every tier.
+	var pit_lane_width: float = 2.8 + float(level) * 0.06
+	# Constant grass gap, same on every tier (the straight stays put).
 	var grass_gap: float = 3.5
 	var pit_z: float = asphalt_outer_z + grass_gap + pit_lane_width * 0.5
 
-	# Pit asphalt — flat box running the full length of the straight
-	# with smooth merge ramps at each end (small triangle wedges
-	# fanning back to the track edge so it visually branches off).
-	# Implemented as one main slab + two end "ramps" trimmed at the
-	# track outer edge.
+	# Pit asphalt main slab — covers the full length of the pit
+	# straight (-sh..+sh) at z = pit_z.
 	var pit_main := MeshInstance3D.new()
 	pit_main.name = "PitAsphaltMain"
 	var pit_main_bm := BoxMesh.new()
@@ -311,31 +310,53 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 	pit_main.position = Vector3(0.0, 0.005, pit_z)
 	parent.add_child(pit_main)
 
-	# Two merge ramps at the ends — narrow triangles connecting the
-	# pit lane back to the track edge so it visibly branches off
-	# rather than starting/ending in mid-air.
-	var ramp_len: float = 4.0
+	# Entry / exit ramps — slope diagonally from the pit-lane corner
+	# all the way to the track centreline at the loop's east/west
+	# extreme (where the straight meets the south loop). The ramp
+	# overshoots SLIGHTLY past the centreline so its end clearly
+	# overlaps the track asphalt — no visible grass gap.
 	for end_sign: float in [-1.0, 1.0]:
-		var ramp_outer_x: float = end_sign * (sh + ramp_len)
-		var ramp_inner_x: float = end_sign * sh
-		# Ramp is a thin slab from (ramp_inner_x, pit_z) tapering toward
-		# (ramp_outer_x, asphalt_outer_z + 0.4). Approximate with a
-		# rotated narrow box.
-		var ramp_a := Vector3(ramp_inner_x, 0.005, pit_z)
-		var ramp_b := Vector3(ramp_outer_x, 0.005, asphalt_outer_z + 0.4)
+		# Pit-side corner: end of the pit lane on this side.
+		var ramp_a := Vector3(end_sign * sh, 0.005, pit_z)
+		# Track-side corner: where the straight meets the loop
+		# (loop east/west extreme), at the track centreline. We push
+		# 0.5 m INTO the track on z so the ramp end clearly overlaps
+		# the track asphalt strip.
+		var ramp_b := Vector3(end_sign * loop_rx, 0.005, straight_z - 0.5)
 		var ramp_dir := ramp_b - ramp_a
 		var ramp_len_actual: float = ramp_dir.length()
 		if ramp_len_actual < 0.05:
 			continue
 		var ramp := MeshInstance3D.new()
 		var ramp_bm := BoxMesh.new()
-		ramp_bm.size = Vector3(ramp_len_actual + 0.05, 0.08,
-			pit_lane_width * 0.7)
+		# Ramp width matches the pit lane so the merge reads as a
+		# continuous strip, not a thinning triangle.
+		ramp_bm.size = Vector3(ramp_len_actual, 0.08, pit_lane_width)
 		ramp.mesh = ramp_bm
 		ramp.material_override = pit_mat
 		ramp.position = (ramp_a + ramp_b) * 0.5
 		ramp.rotation.y = atan2(-ramp_dir.z, ramp_dir.x)
 		parent.add_child(ramp)
+		# Yellow blend-zone stripe on the inside edge of the ramp
+		# (the side closest to the racing line) — instantly readable
+		# as "pit entry / exit" from above, like real F1 venues.
+		var stripe := MeshInstance3D.new()
+		var stripe_bm := BoxMesh.new()
+		stripe_bm.size = Vector3(ramp_len_actual, 0.10, 0.18)
+		stripe.mesh = stripe_bm
+		var stripe_mat := StandardMaterial3D.new()
+		stripe_mat.albedo_color = Color(0.98, 0.84, 0.20)
+		stripe_mat.emission_enabled = true
+		stripe_mat.emission = Color(0.98, 0.84, 0.20)
+		stripe_mat.emission_energy_multiplier = 1.2
+		stripe.material_override = stripe_mat
+		# Offset to the south side of the ramp (toward the track).
+		var inner_offset: float = pit_lane_width * 0.5 - 0.10
+		var inner_dir := Vector3(-ramp_dir.z, 0.0, ramp_dir.x).normalized()
+		stripe.position = (ramp_a + ramp_b) * 0.5 + inner_dir * (-inner_offset) \
+			+ Vector3(0.0, 0.05, 0.0)
+		stripe.rotation.y = atan2(-ramp_dir.z, ramp_dir.x)
+		parent.add_child(stripe)
 
 	# Pit wall — thin slab on the SOUTH edge of the pit lane (between
 	# pit and track). Stretches the length of the main pit straight.
@@ -382,11 +403,13 @@ func _build_pit_lane(parent: Node3D, level: int) -> void:
 		dash.position = Vector3(dash_x, 0.07, pit_z)
 		parent.add_child(dash)
 
-	# Garage row NORTH of the pit lane (further from track). 1→11 bays
-	# scaling with facility level, evenly spaced along the pit straight.
-	var bays: int = clampi(1 + roundi((float(level) - 1.0) * 10.0
-		/ float(maxi(Facilities.MAX_LEVEL - 1, 1))), 1, 11)
-	var bay_w: float = 2.4
+	# Garage row NORTH of the pit lane (further from track). 1→14 bays
+	# scaling with facility level, evenly spaced along the pit straight
+	# (28 m straight gives ~2.0 m per bay at the cap, comfortably past
+	# the user's required 10-bay minimum at tier 10).
+	var bays: int = clampi(1 + roundi((float(level) - 1.0) * 13.0
+		/ float(maxi(Facilities.MAX_LEVEL - 1, 1))), 1, 14)
+	var bay_w: float = 2.0
 	var bay_d: float = 3.4 + float(level) * 0.05
 	var bay_h: float = 2.6 + float(level) * 0.05
 	var garage_z: float = pit_z + pit_lane_width * 0.5 + bay_d * 0.5 + 0.30

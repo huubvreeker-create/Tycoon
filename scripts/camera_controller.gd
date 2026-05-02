@@ -19,14 +19,21 @@ signal tapped(screen_pos: Vector2)
 @export var pan_speed: float = 0.05
 # `min_zoom` / `max_zoom` are the ORTHOGONAL camera `size` bounds (the
 # vertical world span the camera shows). Pinch grows / shrinks them.
-@export var min_zoom: float = 18.0
-@export var max_zoom: float = 110.0
-@export var initial_zoom: float = 52.0
+# max_zoom must be wide enough for tier 10's full track (loop_rx=80
+# gives 160 m horizontal track extent — camera vertical span 240
+# easily fits that with a margin once portrait aspect ratio is
+# applied).
+@export var min_zoom: float = 22.0
+@export var max_zoom: float = 240.0
+@export var initial_zoom: float = 60.0
 @export var pitch_degrees: float = -55.0
 # Yaw the rig so the track's longer X axis runs down the portrait
 # viewport — uses the screen height for the wider track dimension.
 @export var yaw_degrees: float = 90.0
-@export var pan_bounds: float = 60.0
+# Pan bounds also scale with tier 10's reach so the player can pan
+# to the south-loop apex (~88 m from origin) and the parking lot
+# (~30 m further south + west).
+@export var pan_bounds: float = 130.0
 @export var tap_threshold_px: float = 14.0
 
 @onready var pitch_node: Node3D = $Pitch
