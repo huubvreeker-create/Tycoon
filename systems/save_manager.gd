@@ -2,8 +2,8 @@ extends Node
 ##
 ## Persistence layer. Serialises every autoload's state plus the
 ## current Track's progression to a JSON file at user://savegame.json.
-## Autosaves at the end of every day; manual save/load via the HUD or
-## F5 / F9 hotkeys.
+## Autosaves at the end of every day; manual save/load via the
+## Settings popup (cog icon in the HUD top bar).
 ##
 ## Loading reloads the current scene; on the way back up, Track reads
 ## pending_track_state to start at the right tier with the right kart

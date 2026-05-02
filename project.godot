@@ -1,5 +1,5 @@
 ; Engine configuration file.
-; Project: Kart Empire
+; Project: Kart Empire (mobile, portrait)
 ;
 ; To regenerate / inspect, open in the Godot 4 editor.
 
@@ -10,7 +10,7 @@ config_version=5
 config/name="Kart Empire"
 config/description="Build your kart racing empire from a small indoor track to a global motorsport business."
 run/main_scene="res://scenes/main.tscn"
-config/features=PackedStringArray("4.3", "Forward Plus")
+config/features=PackedStringArray("4.3", "Mobile")
 config/icon="res://icon.svg"
 
 [autoload]
@@ -26,13 +26,23 @@ SaveManager="*res://systems/save_manager.gd"
 
 [display]
 
-window/size/viewport_width=1280
-window/size/viewport_height=720
+window/size/viewport_width=720
+window/size/viewport_height=1280
+window/size/window_width_override=360
+window/size/window_height_override=640
+window/handheld/orientation=1
 window/stretch/mode="canvas_items"
-window/stretch/aspect="keep"
+window/stretch/aspect="keep_width"
+
+[input_devices]
+
+pointing/emulate_touch_from_mouse=true
+pointing/emulate_mouse_from_touch=false
 
 [rendering]
 
-renderer/rendering_method="forward_plus"
+renderer/rendering_method="mobile"
 renderer/rendering_method.mobile="mobile"
 environment/defaults/default_clear_color=Color(0.06, 0.07, 0.12, 1)
+textures/default_filters/anisotropic_filtering_level=0
+anti_aliasing/quality/msaa_3d=1

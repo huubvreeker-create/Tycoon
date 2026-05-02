@@ -48,7 +48,8 @@ func _ready() -> void:
 
 func open_for(kind: String, track_ref: Track) -> void:
 	_track = track_ref
-	var tab := "kart" if kind == "kart" else "track"
+	# Allow any of the four tabs to be opened directly.
+	var tab := kind if kind in ["track", "kart", "facilities", "staff"] else "track"
 	visible = true
 	_switch_tab(tab)
 
@@ -305,19 +306,19 @@ func _add_upgrade_row(
 	var name_lbl := Label.new()
 	name_lbl.text = name_text
 	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name_lbl.add_theme_font_size_override("font_size", 14)
+	name_lbl.add_theme_font_size_override("font_size", 16)
 	name_lbl.add_theme_color_override("font_color", Color(0.92, 0.95, 1, 1))
 	top.add_child(name_lbl)
 
 	var lvl_lbl := Label.new()
 	lvl_lbl.text = level_text
-	lvl_lbl.add_theme_font_size_override("font_size", 11)
+	lvl_lbl.add_theme_font_size_override("font_size", 13)
 	lvl_lbl.add_theme_color_override("font_color", Color(0.60, 0.70, 0.90, 0.85))
 	top.add_child(lvl_lbl)
 
 	# Progress bar
 	var bar := ProgressBar.new()
-	bar.custom_minimum_size = Vector2(0, 6)
+	bar.custom_minimum_size = Vector2(0, 8)
 	bar.max_value = bar_max
 	bar.value = bar_value
 	bar.show_percentage = false
@@ -335,13 +336,15 @@ func _add_upgrade_row(
 	if detail_text != "":
 		var detail := Label.new()
 		detail.text = detail_text
-		detail.add_theme_font_size_override("font_size", 11)
-		detail.add_theme_color_override("font_color", Color(0.65, 0.75, 0.90, 0.80))
+		detail.add_theme_font_size_override("font_size", 12)
+		detail.add_theme_color_override("font_color", Color(0.65, 0.75, 0.90, 0.85))
 		detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		vbox.add_child(detail)
 
-	# Upgrade button
+	# Upgrade button — sized for thumb taps
 	var btn := Button.new()
+	btn.custom_minimum_size = Vector2(0, 48)
+	btn.add_theme_font_size_override("font_size", 15)
 	if not can_upg:
 		btn.text = max_label
 		btn.disabled = true
@@ -385,17 +388,19 @@ func _add_buy_row(
 	var name_lbl := Label.new()
 	name_lbl.text = name_text
 	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name_lbl.add_theme_font_size_override("font_size", 14)
+	name_lbl.add_theme_font_size_override("font_size", 16)
 	name_lbl.add_theme_color_override("font_color", Color(0.92, 0.95, 1, 1))
 	top.add_child(name_lbl)
 
 	var status := Label.new()
 	status.text = status_text
-	status.add_theme_font_size_override("font_size", 11)
+	status.add_theme_font_size_override("font_size", 13)
 	status.add_theme_color_override("font_color", Color(0.60, 0.70, 0.90, 0.85))
 	top.add_child(status)
 
 	var btn := Button.new()
+	btn.custom_minimum_size = Vector2(0, 48)
+	btn.add_theme_font_size_override("font_size", 15)
 	if not can_buy:
 		btn.text = "Fleet at capacity"
 		btn.disabled = true

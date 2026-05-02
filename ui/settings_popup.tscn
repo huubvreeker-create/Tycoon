@@ -1,0 +1,92 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://ui/settings_popup.gd" id="1_settings_script"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_dim"]
+bg_color = Color(0, 0, 0, 0.55)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+bg_color = Color(0.07, 0.08, 0.13, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.13, 0.83, 0.96, 0.85)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_left = 12
+corner_radius_bottom_right = 12
+content_margin_left = 22.0
+content_margin_top = 22.0
+content_margin_right = 22.0
+content_margin_bottom = 22.0
+
+[node name="SettingsPopup" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 0
+script = ExtResource("1_settings_script")
+visible = false
+
+[node name="Dim" type="PanelContainer" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 1
+theme_override_styles/panel = SubResource("StyleBoxFlat_dim")
+
+[node name="DimButton" type="Button" parent="Dim"]
+unique_name_in_owner = true
+anchor_right = 1.0
+anchor_bottom = 1.0
+flat = true
+
+[node name="Panel" type="PanelContainer" parent="."]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -160.0
+offset_top = -180.0
+offset_right = 160.0
+offset_bottom = 180.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="VBox" type="VBoxContainer" parent="Panel"]
+theme_override_constants/separation = 14
+
+[node name="TitleLabel" type="Label" parent="Panel/VBox"]
+text = "Settings"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.95, 0.97, 1, 1)
+theme_override_font_sizes/font_size = 22
+
+[node name="SaveButton" type="Button" parent="Panel/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 56)
+text = "Save Game"
+theme_override_font_sizes/font_size = 16
+
+[node name="LoadButton" type="Button" parent="Panel/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 56)
+text = "Load Game"
+theme_override_font_sizes/font_size = 16
+
+[node name="DeleteSaveButton" type="Button" parent="Panel/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 48)
+text = "Delete Save"
+theme_override_font_sizes/font_size = 14
+
+[node name="StatusLabel" type="Label" parent="Panel/VBox"]
+unique_name_in_owner = true
+text = ""
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.7, 0.78, 0.92, 1)
+theme_override_font_sizes/font_size = 12
+
+[node name="CloseButton" type="Button" parent="Panel/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 48)
+text = "Close"
+theme_override_font_sizes/font_size = 14

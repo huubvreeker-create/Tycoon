@@ -1,24 +1,24 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://ui/hud.gd" id="1_hud_script"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_topbar"]
-bg_color = Color(0.05, 0.06, 0.10, 0.92)
+bg_color = Color(0.05, 0.06, 0.10, 0.94)
 border_width_bottom = 2
 border_color = Color(0.13, 0.83, 0.96, 0.85)
-content_margin_left = 24.0
+content_margin_left = 14.0
 content_margin_top = 10.0
-content_margin_right = 24.0
-content_margin_bottom = 10.0
+content_margin_right = 14.0
+content_margin_bottom = 12.0
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_footer"]
-bg_color = Color(0.05, 0.06, 0.10, 0.85)
+bg_color = Color(0.05, 0.06, 0.10, 0.94)
 border_width_top = 1
-border_color = Color(0.13, 0.83, 0.96, 0.45)
-content_margin_left = 16.0
-content_margin_top = 6.0
-content_margin_right = 16.0
-content_margin_bottom = 6.0
+border_color = Color(0.13, 0.83, 0.96, 0.55)
+content_margin_left = 14.0
+content_margin_top = 10.0
+content_margin_right = 14.0
+content_margin_bottom = 14.0
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_progress_bg"]
 bg_color = Color(0.10, 0.12, 0.18, 1)
@@ -34,142 +34,210 @@ corner_radius_top_right = 4
 corner_radius_bottom_left = 4
 corner_radius_bottom_right = 4
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_alert"]
+bg_color = Color(0.05, 0.06, 0.10, 0.92)
+border_width_left = 0
+border_color = Color(0, 0, 0, 0)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_left = 6
+corner_radius_bottom_right = 6
+content_margin_left = 12.0
+content_margin_top = 6.0
+content_margin_right = 12.0
+content_margin_bottom = 6.0
+
 [node name="HUD" type="CanvasLayer"]
 script = ExtResource("1_hud_script")
 
 [node name="TopBar" type="PanelContainer" parent="."]
 anchors_preset = 10
 anchor_right = 1.0
-offset_bottom = 92.0
 grow_horizontal = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_topbar")
 
 [node name="VBox" type="VBoxContainer" parent="TopBar"]
-theme_override_constants/separation = 6
+theme_override_constants/separation = 4
 
 [node name="Row1" type="HBoxContainer" parent="TopBar/VBox"]
-theme_override_constants/separation = 24
+theme_override_constants/separation = 8
 
-[node name="VenueLabel" type="Label" parent="TopBar/VBox/Row1"]
+[node name="SettingsButton" type="Button" parent="TopBar/VBox/Row1"]
 unique_name_in_owner = true
-text = "Tier 1  Lvl 1  —  Hometown Indoor"
-theme_override_colors/font_color = Color(0.95, 0.97, 1, 1)
+custom_minimum_size = Vector2(48, 48)
+text = "⚙"
+theme_override_font_sizes/font_size = 24
+
+[node name="CashLabel" type="Label" parent="TopBar/VBox/Row1"]
+unique_name_in_owner = true
+size_flags_horizontal = 3
+text = "€0"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.55, 0.92, 0.38, 1)
+theme_override_font_sizes/font_size = 28
+
+[node name="DayBadge" type="Label" parent="TopBar/VBox/Row1"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(64, 48)
+text = "Day 1"
+horizontal_alignment = 2
+vertical_alignment = 1
+theme_override_colors/font_color = Color(0.13, 0.83, 0.96, 1)
 theme_override_font_sizes/font_size = 18
 
-[node name="EventTag" type="Label" parent="TopBar/VBox/Row1"]
+[node name="VenueLabel" type="Label" parent="TopBar/VBox"]
+unique_name_in_owner = true
+text = "Tier 1  Lvl 1  —  Hometown Indoor"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.95, 0.97, 1, 1)
+theme_override_font_sizes/font_size = 15
+
+[node name="EventTag" type="Label" parent="TopBar/VBox"]
 unique_name_in_owner = true
 text = ""
 visible = false
-theme_override_font_sizes/font_size = 14
-
-[node name="Spacer1" type="Control" parent="TopBar/VBox/Row1"]
-size_flags_horizontal = 3
-
-[node name="BuyKartButton" type="Button" parent="TopBar/VBox/Row1"]
-unique_name_in_owner = true
-text = "Buy Kart   €280"
-custom_minimum_size = Vector2(150, 30)
-
-[node name="TicketBox" type="HBoxContainer" parent="TopBar/VBox/Row1"]
-theme_override_constants/separation = 6
-
-[node name="TicketCaption" type="Label" parent="TopBar/VBox/Row1/TicketBox"]
-text = "Ticket"
-theme_override_colors/font_color = Color(0.7, 0.78, 0.92, 1)
-theme_override_font_sizes/font_size = 14
-
-[node name="TicketMinusButton" type="Button" parent="TopBar/VBox/Row1/TicketBox"]
-unique_name_in_owner = true
-text = "−"
-custom_minimum_size = Vector2(28, 28)
-
-[node name="TicketLabel" type="Label" parent="TopBar/VBox/Row1/TicketBox"]
-unique_name_in_owner = true
-text = "€25"
-custom_minimum_size = Vector2(60, 0)
 horizontal_alignment = 1
-theme_override_colors/font_color = Color(0.55, 0.92, 0.38, 1)
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 14
 
-[node name="TicketPlusButton" type="Button" parent="TopBar/VBox/Row1/TicketBox"]
+[node name="StatsRow" type="HBoxContainer" parent="TopBar/VBox"]
+theme_override_constants/separation = 14
+alignment = 1
+
+[node name="ReputationLabel" type="Label" parent="TopBar/VBox/StatsRow"]
 unique_name_in_owner = true
-text = "+"
-custom_minimum_size = Vector2(28, 28)
-
-[node name="Row2" type="HBoxContainer" parent="TopBar/VBox"]
-theme_override_constants/separation = 24
-
-[node name="CashLabel" type="Label" parent="TopBar/VBox/Row2"]
-unique_name_in_owner = true
-text = "Cash   €0"
-theme_override_colors/font_color = Color(0.55, 0.92, 0.38, 1)
-theme_override_font_sizes/font_size = 16
-
-[node name="ReputationLabel" type="Label" parent="TopBar/VBox/Row2"]
-unique_name_in_owner = true
-text = "Rep   0"
+text = "Rep 0"
 theme_override_colors/font_color = Color(0.99, 0.75, 0.18, 1)
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 14
 
-[node name="CustomersLabel" type="Label" parent="TopBar/VBox/Row2"]
+[node name="CustomersLabel" type="Label" parent="TopBar/VBox/StatsRow"]
 unique_name_in_owner = true
-text = "Customers   0"
+text = "Cust 0"
 theme_override_colors/font_color = Color(0.86, 0.42, 0.98, 1)
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 14
 
-[node name="QueueLabel" type="Label" parent="TopBar/VBox/Row2"]
+[node name="QueueLabel" type="Label" parent="TopBar/VBox/StatsRow"]
 unique_name_in_owner = true
-text = "Queue   0"
+text = "Queue 0"
 theme_override_colors/font_color = Color(0.96, 0.27, 0.36, 1)
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 14
 
-[node name="Spacer2" type="Control" parent="TopBar/VBox/Row2"]
-size_flags_horizontal = 3
-
-[node name="SaveButton" type="Button" parent="TopBar/VBox/Row2"]
+[node name="DayProgress" type="ProgressBar" parent="TopBar/VBox"]
 unique_name_in_owner = true
-text = "Save  F5"
-custom_minimum_size = Vector2(76, 26)
-
-[node name="LoadButton" type="Button" parent="TopBar/VBox/Row2"]
-unique_name_in_owner = true
-text = "Load  F9"
-custom_minimum_size = Vector2(76, 26)
-
-[node name="DayBox" type="HBoxContainer" parent="TopBar/VBox/Row2"]
-theme_override_constants/separation = 8
-
-[node name="DayLabel" type="Label" parent="TopBar/VBox/Row2/DayBox"]
-unique_name_in_owner = true
-text = "Day   1"
-theme_override_colors/font_color = Color(0.13, 0.83, 0.96, 1)
-theme_override_font_sizes/font_size = 16
-
-[node name="DayProgress" type="ProgressBar" parent="TopBar/VBox/Row2/DayBox"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(180, 14)
+custom_minimum_size = Vector2(0, 8)
 max_value = 100.0
 value = 0.0
 show_percentage = false
 theme_override_styles/background = SubResource("StyleBoxFlat_progress_bg")
 theme_override_styles/fill = SubResource("StyleBoxFlat_progress_fill")
 
+[node name="AlertHolder" type="MarginContainer" parent="."]
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -240.0
+offset_bottom = -200.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_right = 16
+
+[node name="AlertPanel" type="PanelContainer" parent="AlertHolder"]
+theme_override_styles/panel = SubResource("StyleBoxFlat_alert")
+visible = false
+
+[node name="AlertLabel" type="Label" parent="AlertHolder/AlertPanel"]
+unique_name_in_owner = true
+text = ""
+horizontal_alignment = 1
+autowrap_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.97, 1, 1)
+theme_override_font_sizes/font_size = 14
+
 [node name="Footer" type="PanelContainer" parent="."]
 anchors_preset = 12
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = -36.0
 grow_horizontal = 2
 grow_vertical = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_footer")
 
-[node name="AlertLabel" type="Label" parent="Footer"]
-unique_name_in_owner = true
-text = "Click a kart to upgrade the fleet  —  click the track to upgrade the venue  —  right-mouse drag to pan  —  scroll to zoom"
-horizontal_alignment = 1
+[node name="VBox" type="VBoxContainer" parent="Footer"]
+theme_override_constants/separation = 10
+
+[node name="TicketRow" type="HBoxContainer" parent="Footer/VBox"]
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="TicketCaption" type="Label" parent="Footer/VBox/TicketRow"]
+text = "Ticket"
+vertical_alignment = 1
 theme_override_colors/font_color = Color(0.7, 0.78, 0.92, 1)
-theme_override_font_sizes/font_size = 13
+theme_override_font_sizes/font_size = 14
+
+[node name="TicketMinusButton" type="Button" parent="Footer/VBox/TicketRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(56, 48)
+text = "−"
+theme_override_font_sizes/font_size = 24
+
+[node name="TicketLabel" type="Label" parent="Footer/VBox/TicketRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(80, 0)
+text = "€25"
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_colors/font_color = Color(0.55, 0.92, 0.38, 1)
+theme_override_font_sizes/font_size = 22
+
+[node name="TicketPlusButton" type="Button" parent="Footer/VBox/TicketRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(56, 48)
+text = "+"
+theme_override_font_sizes/font_size = 24
+
+[node name="TabRow" type="HBoxContainer" parent="Footer/VBox"]
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="TrackTabButton" type="Button" parent="Footer/VBox/TabRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 56)
+size_flags_horizontal = 3
+text = "TRACK"
+theme_override_font_sizes/font_size = 14
+
+[node name="KartTabButton" type="Button" parent="Footer/VBox/TabRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 56)
+size_flags_horizontal = 3
+text = "KART"
+theme_override_font_sizes/font_size = 14
+
+[node name="FacilitiesTabButton" type="Button" parent="Footer/VBox/TabRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 56)
+size_flags_horizontal = 3
+text = "FACILITY"
+theme_override_font_sizes/font_size = 14
+
+[node name="StaffTabButton" type="Button" parent="Footer/VBox/TabRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 56)
+size_flags_horizontal = 3
+text = "STAFF"
+theme_override_font_sizes/font_size = 14
+
+[node name="BuyKartRow" type="HBoxContainer" parent="Footer/VBox"]
+theme_override_constants/separation = 8
+
+[node name="BuyKartButton" type="Button" parent="Footer/VBox/BuyKartRow"]
+unique_name_in_owner = true
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 52)
+text = "Buy Kart   €280"
+theme_override_font_sizes/font_size = 16
 
 [node name="AlertTimer" type="Timer" parent="."]
 unique_name_in_owner = true
