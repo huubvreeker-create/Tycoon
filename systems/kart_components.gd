@@ -5,15 +5,15 @@ extends Node
 ## concrete mechanical / economic effects used by Track and Customer.
 ##
 
-const MAX_LEVEL: int = 50
-const COST_GROWTH: float = 1.08
+const MAX_LEVEL: int = 100
+const COST_GROWTH: float = 1.10
 
 const _BASE_COST := {
-	"engine":  150.0,
-	"tires":   100.0,
-	"chassis": 120.0,
-	"suit":     80.0,
-	"brakes":   90.0,
+	"engine":  120.0,
+	"tires":   90.0,
+	"chassis": 100.0,
+	"suit":     70.0,
+	"brakes":   80.0,
 }
 
 const _NAMES := {
@@ -44,7 +44,8 @@ func engine_speed_bonus() -> float:
 	return (engine_level - 1) * 0.15
 
 func engine_revenue_multiplier() -> float:
-	return 1.0 + (engine_level - 1) * 0.004
+	# Compounds: +1.5% per level → 4.4× at level 100, 800× at level 450
+	return pow(1.015, float(engine_level - 1))
 
 func tires_satisfaction_bonus() -> float:
 	return (tires_level - 1) * 0.003

@@ -3,8 +3,10 @@ class_name Kart
 
 const IDLE_SPEED_BASE: float = 6.0
 const RACING_SPEED_BASE: float = 14.0
-const PER_LEVEL_SPEED_BONUS: float = 0.18
-const LEVELS_PER_TIER: int = 25
+const PER_LEVEL_SPEED_BONUS: float = 0.04
+# Cumulative level caps mirroring Track.TIER_LEVEL_CAPS so the kart
+# visual tier (1-10) advances at the same milestones as the track.
+const TIER_LEVEL_CAPS: Array[int] = [25, 50, 75, 100, 150, 200, 250, 300, 350, 450]
 
 @export var kart_color: Color = Color(0.96, 0.27, 0.36)
 
@@ -35,65 +37,135 @@ var _flash_color: Color = Color.WHITE
 # Vehicles get LONGER / LOWER / NARROWER as they progress (F1 silhouette);
 # spoilers + wings get bigger; wheels get larger and more exposed.
 # ---------------------------------------------------------------------------
+# 10-tier kart silhouettes — gradual evolution from squat kid-kart to
+# full F1 over ten visible steps. Body LOWER, NARROWER, LONGER as tier
+# climbs; spoilers + front wings appear and grow; wheels get bigger
+# and pushed wider apart.
 const _BODY_SIZE := {
-	1: Vector3(0.95, 0.28, 1.4),   # kid kart — squat
-	2: Vector3(1.00, 0.30, 1.7),   # sport kart
-	3: Vector3(0.95, 0.26, 2.6),   # pro race car — narrower, longer
-	4: Vector3(0.85, 0.20, 3.8),   # F1 — very narrow, very long, low
+	 1: Vector3(0.95, 0.30, 1.4),
+	 2: Vector3(0.95, 0.30, 1.6),
+	 3: Vector3(0.95, 0.28, 1.9),
+	 4: Vector3(0.95, 0.28, 2.2),
+	 5: Vector3(0.92, 0.26, 2.6),
+	 6: Vector3(0.90, 0.24, 2.9),
+	 7: Vector3(0.88, 0.22, 3.2),
+	 8: Vector3(0.85, 0.22, 3.5),
+	 9: Vector3(0.85, 0.20, 3.8),
+	10: Vector3(0.82, 0.18, 4.2),
 }
-const _BODY_Y := { 1: 0.36, 2: 0.40, 3: 0.34, 4: 0.28 }
+const _BODY_Y := {
+	1: 0.36, 2: 0.36, 3: 0.34, 4: 0.32, 5: 0.30,
+	6: 0.28, 7: 0.26, 8: 0.25, 9: 0.24, 10: 0.22
+}
 
 const _COCKPIT_SIZE := {
-	1: Vector3(0.50, 0.26, 0.55),
-	2: Vector3(0.55, 0.30, 0.65),
-	3: Vector3(0.55, 0.32, 0.75),
-	4: Vector3(0.50, 0.32, 0.70),  # enclosed F1 cell
+	 1: Vector3(0.50, 0.26, 0.55),
+	 2: Vector3(0.52, 0.28, 0.60),
+	 3: Vector3(0.55, 0.30, 0.65),
+	 4: Vector3(0.55, 0.30, 0.70),
+	 5: Vector3(0.55, 0.32, 0.75),
+	 6: Vector3(0.55, 0.32, 0.78),
+	 7: Vector3(0.55, 0.32, 0.78),
+	 8: Vector3(0.52, 0.32, 0.75),
+	 9: Vector3(0.50, 0.32, 0.72),
+	10: Vector3(0.48, 0.30, 0.68),
 }
 const _COCKPIT_OFFSET := {
-	1: Vector3(0, 0.55, 0.15),
-	2: Vector3(0, 0.62, 0.20),
-	3: Vector3(0, 0.62, 0.40),
-	4: Vector3(0, 0.55, 0.55),
+	 1: Vector3(0, 0.55, 0.15),
+	 2: Vector3(0, 0.58, 0.18),
+	 3: Vector3(0, 0.60, 0.22),
+	 4: Vector3(0, 0.60, 0.30),
+	 5: Vector3(0, 0.60, 0.40),
+	 6: Vector3(0, 0.58, 0.48),
+	 7: Vector3(0, 0.56, 0.55),
+	 8: Vector3(0, 0.54, 0.60),
+	 9: Vector3(0, 0.52, 0.62),
+	10: Vector3(0, 0.50, 0.65),
 }
 
 const _SPOILER_SIZE := {
-	1: Vector3.ZERO,
-	2: Vector3(0.85, 0.28, 0.14),
-	3: Vector3(1.05, 0.42, 0.18),
-	4: Vector3(1.30, 0.55, 0.22),  # huge F1 wing
+	 1: Vector3.ZERO,
+	 2: Vector3(0.75, 0.20, 0.10),
+	 3: Vector3(0.85, 0.28, 0.14),
+	 4: Vector3(0.95, 0.34, 0.16),
+	 5: Vector3(1.05, 0.42, 0.18),
+	 6: Vector3(1.15, 0.46, 0.20),
+	 7: Vector3(1.20, 0.50, 0.20),
+	 8: Vector3(1.25, 0.54, 0.22),
+	 9: Vector3(1.30, 0.58, 0.22),
+	10: Vector3(1.35, 0.62, 0.22),
 }
 const _SPOILER_OFFSET := {
-	1: Vector3.ZERO,
-	2: Vector3(0, 0.65, 0.80),
-	3: Vector3(0, 0.78, 1.15),
-	4: Vector3(0, 0.95, 1.70),
+	 1: Vector3.ZERO,
+	 2: Vector3(0, 0.60, 0.65),
+	 3: Vector3(0, 0.65, 0.85),
+	 4: Vector3(0, 0.75, 1.00),
+	 5: Vector3(0, 0.82, 1.18),
+	 6: Vector3(0, 0.88, 1.35),
+	 7: Vector3(0, 0.92, 1.50),
+	 8: Vector3(0, 0.95, 1.62),
+	 9: Vector3(0, 1.00, 1.75),
+	10: Vector3(0, 1.05, 1.95),
 }
 
 const _FRONT_WING_SIZE := {
-	1: Vector3.ZERO,
-	2: Vector3.ZERO,
-	3: Vector3(1.05, 0.10, 0.30),
-	4: Vector3(1.40, 0.10, 0.45),
+	 1: Vector3.ZERO,
+	 2: Vector3.ZERO,
+	 3: Vector3(0.85, 0.08, 0.22),
+	 4: Vector3(0.95, 0.08, 0.26),
+	 5: Vector3(1.05, 0.10, 0.30),
+	 6: Vector3(1.15, 0.10, 0.34),
+	 7: Vector3(1.20, 0.10, 0.38),
+	 8: Vector3(1.25, 0.10, 0.40),
+	 9: Vector3(1.32, 0.10, 0.42),
+	10: Vector3(1.45, 0.10, 0.50),
 }
 const _FRONT_WING_OFFSET := {
-	1: Vector3.ZERO,
-	2: Vector3.ZERO,
-	3: Vector3(0, 0.18, -1.20),
-	4: Vector3(0, 0.14, -1.85),
+	 1: Vector3.ZERO,
+	 2: Vector3.ZERO,
+	 3: Vector3(0, 0.18, -1.00),
+	 4: Vector3(0, 0.16, -1.15),
+	 5: Vector3(0, 0.16, -1.32),
+	 6: Vector3(0, 0.15, -1.50),
+	 7: Vector3(0, 0.15, -1.65),
+	 8: Vector3(0, 0.14, -1.78),
+	 9: Vector3(0, 0.14, -1.90),
+	10: Vector3(0, 0.13, -2.10),
 }
 
-const _WHEEL_RADIUS := { 1: 0.18, 2: 0.20, 3: 0.25, 4: 0.32 }
-const _WHEEL_HEIGHT := { 1: 0.14, 2: 0.16, 3: 0.18, 4: 0.22 }
-const _WHEEL_X := { 1: 0.55, 2: 0.60, 3: 0.65, 4: 0.72 }
-const _WHEEL_Z := { 1: 0.55, 2: 0.65, 3: 0.95, 4: 1.45 }
+const _WHEEL_RADIUS := {
+	1: 0.18, 2: 0.19, 3: 0.21, 4: 0.23, 5: 0.25,
+	6: 0.27, 7: 0.29, 8: 0.30, 9: 0.31, 10: 0.34
+}
+const _WHEEL_HEIGHT := {
+	1: 0.14, 2: 0.15, 3: 0.16, 4: 0.17, 5: 0.18,
+	6: 0.19, 7: 0.20, 8: 0.21, 9: 0.22, 10: 0.24
+}
+const _WHEEL_X := {
+	1: 0.55, 2: 0.58, 3: 0.61, 4: 0.64, 5: 0.66,
+	6: 0.68, 7: 0.70, 8: 0.72, 9: 0.73, 10: 0.74
+}
+const _WHEEL_Z := {
+	1: 0.55, 2: 0.62, 3: 0.78, 4: 0.92, 5: 1.05,
+	6: 1.18, 7: 1.30, 8: 1.40, 9: 1.50, 10: 1.65
+}
 
 const _BEACON_SIZE := {
-	1: Vector3(0.45, 0.45, 0.45),
-	2: Vector3(0.40, 0.35, 0.40),
-	3: Vector3(0.30, 0.20, 0.30),  # smaller — F1-ish camera fairing
-	4: Vector3(0.25, 0.12, 0.25),
+	 1: Vector3(0.45, 0.45, 0.45),
+	 2: Vector3(0.42, 0.40, 0.42),
+	 3: Vector3(0.38, 0.32, 0.38),
+	 4: Vector3(0.34, 0.24, 0.34),
+	 5: Vector3(0.30, 0.20, 0.30),
+	 6: Vector3(0.28, 0.18, 0.28),
+	 7: Vector3(0.26, 0.16, 0.26),
+	 8: Vector3(0.25, 0.14, 0.25),
+	 9: Vector3(0.24, 0.13, 0.24),
+	10: Vector3(0.22, 0.11, 0.22),
 }
-const _BEACON_Y := { 1: 1.10, 2: 1.10, 3: 0.90, 4: 0.75 }
+const _BEACON_Y := {
+	1: 1.10, 2: 1.08, 3: 1.00, 4: 0.92, 5: 0.85,
+	6: 0.80, 7: 0.76, 8: 0.74, 9: 0.72, 10: 0.68
+}
 
 
 func _ready() -> void:
@@ -119,8 +191,10 @@ func _process(delta: float) -> void:
 
 
 func tier() -> int:
-	@warning_ignore("integer_division")
-	return clampi((level - 1) / LEVELS_PER_TIER + 1, 1, 4)
+	for i in range(TIER_LEVEL_CAPS.size()):
+		if level <= TIER_LEVEL_CAPS[i]:
+			return i + 1
+	return TIER_LEVEL_CAPS.size()
 
 
 func current_speed() -> float:
@@ -272,8 +346,8 @@ func _apply_visuals() -> void:
 	else:
 		front_wing_mesh.visible = false
 
-	# --- Halo (tier 4 only) ---
-	if t >= 4:
+	# --- Halo (F1-style safety device) — appears at tier 8 and stays. ---
+	if t >= 8:
 		halo_mesh.visible = true
 		halo_mesh.position = _COCKPIT_OFFSET[t] + Vector3(0, 0.45, 0)
 	else:

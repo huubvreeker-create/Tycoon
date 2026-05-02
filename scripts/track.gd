@@ -23,53 +23,109 @@ class_name Track
 
 const KART_SCENE: PackedScene = preload("res://scenes/kart.tscn")
 
+# --- 10-tier progression -----------------------------------------------------
+# Each entry in TIER_LEVEL_CAPS is the cumulative track_level at which the
+# tier ENDS. Tier 1 covers track_level 1..25, tier 2 covers 26..50, etc.
+# Earlier tiers are 25 levels each; mid tiers 50; the final F1 tier is 100
+# so endgame progression has a long tail.
+const TIER_COUNT: int = 10
+const TIER_LEVEL_CAPS: Array[int] = [25, 50, 75, 100, 150, 200, 250, 300, 350, 450]
+
 # Tier-driven data tables (1-indexed via tier number).
 const TIER_NAMES := {
-	1: "Hometown Indoor",
-	2: "Regional Race Center",
-	3: "National Circuit",
-	4: "International Kart Arena",
+	 1: "Backyard Track",
+	 2: "Hometown Indoor",
+	 3: "Local Karting Club",
+	 4: "Regional Race Center",
+	 5: "Provincial Circuit",
+	 6: "National Karting Circuit",
+	 7: "Continental Race Center",
+	 8: "International Grand Prix",
+	 9: "World Championship Track",
+	10: "Formula 1 World Circuit",
 }
-const TIER_KART_CAPACITY := { 1: 5, 2: 8, 3: 12, 4: 16 }
-const TIER_RACE_DURATION := { 1: 7.0, 2: 8.0, 3: 9.5, 4: 11.0 }
-# Track footprint (in metres of world space). Each tier roughly doubles
-# the circuit size — tier 1 is a karting oval, tier 4 is a full F1 lap.
-const TIER_TRACK_RX := { 1: 14.0, 2: 20.0, 3: 28.0, 4: 38.0 }
-const TIER_TRACK_RZ := { 1: 8.0,  2: 12.0, 3: 17.0, 4: 22.0 }
-const TIER_ASPHALT_WIDTH := { 1: 3.4, 2: 4.2, 3: 5.0, 4: 5.8 }
-const TIER_WAVE_FREQ := { 1: 0, 2: 3, 3: 5, 4: 7 }
-const TIER_WAVE_AMP := { 1: 0.0, 2: 1.6, 3: 2.6, 4: 3.6 }
+# Tier 10 = real F1 grid size of 22 cars. Tiers grow gradually so each
+# upgrade actually unlocks one or two extra slots.
+const TIER_KART_CAPACITY := {
+	1: 5, 2: 7, 3: 9, 4: 11, 5: 13, 6: 15, 7: 17, 8: 19, 9: 20, 10: 22
+}
+const TIER_RACE_DURATION := {
+	1: 6.0, 2: 7.0, 3: 8.0, 4: 9.0, 5: 10.0,
+	6: 11.0, 7: 12.0, 8: 13.0, 9: 14.5, 10: 16.0
+}
+# Track footprint (metres). Tier 1 is a backyard loop, tier 10 a full
+# F1 lap — every tier adds clear visible size.
+const TIER_TRACK_RX := {
+	1: 12.0, 2: 14.0, 3: 17.0, 4: 20.0, 5: 24.0,
+	6: 28.0, 7: 32.0, 8: 36.0, 9: 42.0, 10: 50.0
+}
+const TIER_TRACK_RZ := {
+	1: 7.0, 2: 8.0, 3: 10.0, 4: 12.0, 5: 14.0,
+	6: 16.0, 7: 19.0, 8: 22.0, 9: 25.0, 10: 30.0
+}
+const TIER_ASPHALT_WIDTH := {
+	1: 3.0, 2: 3.4, 3: 3.8, 4: 4.2, 5: 4.6,
+	6: 5.0, 7: 5.4, 8: 5.8, 9: 6.4, 10: 7.0
+}
+const TIER_WAVE_FREQ := {
+	1: 0, 2: 0, 3: 2, 4: 3, 5: 4,
+	6: 5, 7: 6, 8: 7, 9: 8, 10: 8
+}
+const TIER_WAVE_AMP := {
+	1: 0.0, 2: 0.0, 3: 1.0, 4: 1.5, 5: 2.0,
+	6: 2.5, 7: 3.0, 8: 3.5, 9: 4.0, 10: 4.5
+}
 const TIER_RIBBON_COLOR := {
-	1: Color(0.13, 0.83, 0.96),
-	2: Color(0.55, 0.92, 0.38),
-	3: Color(0.99, 0.75, 0.18),
-	4: Color(0.86, 0.42, 0.98),
+	1: Color(0.40, 0.65, 1.00),
+	2: Color(0.13, 0.83, 0.96),
+	3: Color(0.55, 0.92, 0.38),
+	4: Color(0.99, 0.75, 0.18),
+	5: Color(1.00, 0.55, 0.20),
+	6: Color(0.96, 0.27, 0.36),
+	7: Color(0.86, 0.42, 0.98),
+	8: Color(0.50, 0.30, 0.95),
+	9: Color(1.00, 0.30, 0.55),
+   10: Color(0.95, 0.95, 0.95),
 }
 const TIER_RUMBLE_COLOR := {
 	1: Color(0.96, 0.27, 0.36),
 	2: Color(0.96, 0.27, 0.36),
-	3: Color(1.00, 0.40, 0.20),
-	4: Color(1.00, 0.30, 0.55),
+	3: Color(0.96, 0.27, 0.36),
+	4: Color(0.96, 0.30, 0.30),
+	5: Color(1.00, 0.35, 0.30),
+	6: Color(1.00, 0.40, 0.20),
+	7: Color(1.00, 0.30, 0.40),
+	8: Color(1.00, 0.30, 0.55),
+	9: Color(1.00, 0.20, 0.50),
+   10: Color(1.00, 0.10, 0.30),
 }
 # Asphalt darkens as you climb tiers — F1 surfaces look almost-black.
 const TIER_ASPHALT_COLOR := {
-	1: Color(0.16, 0.17, 0.22),
-	2: Color(0.13, 0.14, 0.19),
-	3: Color(0.10, 0.11, 0.15),
-	4: Color(0.07, 0.08, 0.10),
+	1: Color(0.20, 0.21, 0.26),
+	2: Color(0.18, 0.19, 0.24),
+	3: Color(0.16, 0.17, 0.22),
+	4: Color(0.14, 0.15, 0.20),
+	5: Color(0.12, 0.13, 0.18),
+	6: Color(0.11, 0.12, 0.16),
+	7: Color(0.10, 0.11, 0.14),
+	8: Color(0.08, 0.09, 0.12),
+	9: Color(0.07, 0.08, 0.10),
+   10: Color(0.05, 0.06, 0.08),
 }
 
-# Level-based progression (see balance pass).
-const MAX_LEVEL: int = 100
-const LEVELS_PER_TIER: int = 25
+# Level-based progression. MAX_LEVEL is the cumulative cap across all
+# 10 tiers; reaching it costs ~10^22 to fully clear.
+const MAX_LEVEL: int = 450
 
-const TRACK_UPGRADE_BASE_COST: float = 250.0
-const TRACK_UPGRADE_GROWTH: float = 1.075
-const KART_UPGRADE_BASE_COST: float = 50.0
-const KART_UPGRADE_GROWTH: float = 1.075
-const BUY_KART_BASE_COST: float = 200.0
-const BUY_KART_LEVEL_FACTOR: float = 80.0
-const BUY_KART_FLEET_GROWTH: float = 1.06
+# Cost growth tuned so the cumulative cost to reach MAX_LEVEL is in
+# the 10-sextillion range (5,000 starting cash → 10^22 endgame).
+const TRACK_UPGRADE_BASE_COST: float = 50.0
+const TRACK_UPGRADE_GROWTH: float = 1.10
+const KART_UPGRADE_BASE_COST: float = 30.0
+const KART_UPGRADE_GROWTH: float = 1.10
+const BUY_KART_BASE_COST: float = 250.0
+const BUY_KART_LEVEL_FACTOR: float = 25.0
+const BUY_KART_FLEET_GROWTH: float = 1.18
 
 const PATH_SEGMENTS: int = 96
 const ASPHALT_DEPTH: float = 0.12
@@ -141,21 +197,43 @@ func _process(delta: float) -> void:
 
 # --- Public API (used by upgrade popup) ------------------------------------
 func track_tier() -> int:
-	@warning_ignore("integer_division")
-	return clampi((track_level - 1) / LEVELS_PER_TIER + 1, 1, 4)
+	for i in range(TIER_LEVEL_CAPS.size()):
+		if track_level <= TIER_LEVEL_CAPS[i]:
+			return i + 1
+	return TIER_COUNT
 
 
 func kart_tier() -> int:
-	@warning_ignore("integer_division")
-	return clampi((kart_level - 1) / LEVELS_PER_TIER + 1, 1, 4)
+	for i in range(TIER_LEVEL_CAPS.size()):
+		if kart_level <= TIER_LEVEL_CAPS[i]:
+			return i + 1
+	return TIER_COUNT
+
+
+func _tier_floor(tier: int) -> int:
+	# Last level of the tier BELOW `tier` — i.e., one less than the
+	# first level OF this tier.
+	if tier <= 1:
+		return 0
+	return TIER_LEVEL_CAPS[tier - 2]
 
 
 func track_level_in_tier() -> int:
-	return ((track_level - 1) % LEVELS_PER_TIER) + 1
+	return track_level - _tier_floor(track_tier())
 
 
 func kart_level_in_tier() -> int:
-	return ((kart_level - 1) % LEVELS_PER_TIER) + 1
+	return kart_level - _tier_floor(kart_tier())
+
+
+func levels_in_current_track_tier() -> int:
+	var t: int = track_tier()
+	return TIER_LEVEL_CAPS[t - 1] - _tier_floor(t)
+
+
+func levels_in_current_kart_tier() -> int:
+	var t: int = kart_tier()
+	return TIER_LEVEL_CAPS[t - 1] - _tier_floor(t)
 
 
 func venue_name() -> String:
@@ -163,7 +241,10 @@ func venue_name() -> String:
 
 
 func kart_capacity() -> int:
-	return TIER_KART_CAPACITY[track_tier()] + (track_level_in_tier() - 1) / 6
+	# Capacity is purely tier-driven: 5 at tier 1 → 22 at tier 10 (the
+	# real F1 grid size). Each tier upgrade unlocks 1-2 new slots so
+	# the player feels the bump immediately on tier-up.
+	return TIER_KART_CAPACITY[track_tier()]
 
 
 func can_upgrade_track() -> bool:

@@ -4,8 +4,8 @@ extends Node
 ## Building costs more than upgrading; all effects scale with level.
 ##
 
-const MAX_LEVEL: int = 20
-const COST_GROWTH: float = 1.12
+const MAX_LEVEL: int = 100
+const COST_GROWTH: float = 1.10
 
 const _BUILD_COST := {
 	"cafeteria":     500.0,
@@ -15,6 +15,19 @@ const _BUILD_COST := {
 	"sponsor_boards":400.0,
 	"lighting":      700.0,
 	"grandstand":    600.0,
+}
+
+# Track-tier required to BUILD or UPGRADE each facility. Locked facilities
+# show "Requires Tier X" in the panel until the player upgrades the
+# track high enough.
+const _REQUIRED_TRACK_TIER := {
+	"cafeteria":      1,
+	"merch_shop":     2,
+	"pit_lane":       2,
+	"sponsor_boards": 3,
+	"grandstand":     3,
+	"lounge":         4,
+	"lighting":       5,
 }
 
 const _NAMES := {
@@ -48,36 +61,40 @@ var grandstand_level:     int = 0
 
 # --- Effects ----------------------------------------------------------------
 func cafeteria_revenue_per_customer() -> float:
-	return cafeteria_level * 3.0
+	# Compounds: doubles every ~30 levels.
+	return cafeteria_level * 3.0 * pow(1.025, float(cafeteria_level))
 
 func cafeteria_satisfaction_bonus() -> float:
-	return cafeteria_level * 0.005
+	return minf(0.30, cafeteria_level * 0.003)
 
 func pit_lane_race_time_reduction() -> float:
-	return pit_lane_level * 0.25
+	# Soft-capped so races never go below 2s
+	return minf(8.0, pit_lane_level * 0.12)
 
 func pit_lane_maintenance_multiplier() -> float:
-	return maxf(0.25, 1.0 - pit_lane_level * 0.04)
+	return maxf(0.10, 1.0 - pit_lane_level * 0.012)
 
 func lounge_satisfaction_bonus() -> float:
-	return lounge_level * 0.012
+	return minf(0.40, lounge_level * 0.005)
 
 func lounge_reputation_per_race() -> int:
-	# +1 reputation per race for every 4 lounge levels (level 4 = 1, 8 = 2, ...)
+	# +1 reputation per race for every 4 lounge levels.
 	@warning_ignore("integer_division")
 	return lounge_level / 4
 
 func merch_daily_income() -> int:
-	return merch_shop_level * 50
+	# Compounds — endgame merch shop is a major income source.
+	return int(round(50.0 * merch_shop_level * pow(1.04, float(merch_shop_level))))
 
 func sponsor_daily_income() -> int:
-	return sponsor_boards_level * 30
+	return int(round(30.0 * sponsor_boards_level * pow(1.04, float(sponsor_boards_level))))
 
 func lighting_revenue_multiplier() -> float:
-	return 1.0 + lighting_level * 0.008
+	# Compounds: +1% per level, multiplicative with engine.
+	return pow(1.01, float(lighting_level))
 
 func grandstand_daily_income() -> int:
-	return grandstand_level * 40
+	return int(round(40.0 * grandstand_level * pow(1.04, float(grandstand_level))))
 
 func grandstand_reputation_per_race() -> int:
 	@warning_ignore("integer_division")
@@ -108,7 +125,16 @@ func get_level(facility: String) -> int:
 		"grandstand":     return grandstand_level
 	return 0
 
+func required_track_tier(facility: String) -> int:
+	return _REQUIRED_TRACK_TIER.get(facility, 1)
+
+func is_unlocked(facility: String, current_track_tier: int) -> bool:
+	return current_track_tier >= required_track_tier(facility)
+
 func can_upgrade(facility: String) -> bool:
+	# NOTE: this only checks the level cap. UI / `upgrade()` callers
+	# should additionally check `is_unlocked` against the live track
+	# tier — the Facilities autoload doesn't have a Track ref.
 	return get_level(facility) < MAX_LEVEL
 
 func upgrade_cost(facility: String) -> int:
@@ -120,6 +146,12 @@ func upgrade_cost(facility: String) -> int:
 func upgrade(facility: String) -> bool:
 	if not can_upgrade(facility):
 		return false
+	# Lock check — refuse if the player hasn't reached the required
+	# track tier yet.
+	if SaveManager.track != null:
+		var current_tier: int = SaveManager.track.track_tier()
+		if not is_unlocked(facility, current_tier):
+			return false
 	var cost := upgrade_cost(facility)
 	if not EconomyManager.try_spend(display_name(facility) + " upgrade", cost):
 		return false

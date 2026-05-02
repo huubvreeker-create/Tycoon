@@ -114,9 +114,9 @@ func _add_track_rows() -> void:
 	_add_upgrade_row(
 		Color(0.13, 0.83, 0.96),
 		"Track Level",
-		"Lvl %d / %d  (Tier %d)" % [lvl, _track.MAX_LEVEL, tier],
+		"Lvl %d / %d  (Tier %d / %d)" % [lvl, _track.MAX_LEVEL, tier, _track.TIER_COUNT],
 		float(_track.track_level_in_tier()),
-		float(_track.LEVELS_PER_TIER),
+		float(_track.levels_in_current_track_tier()),
 		"Capacity %d karts  |  Race %.1fs" % [
 			_track.kart_capacity(),
 			_track.TIER_RACE_DURATION[tier]
@@ -152,9 +152,9 @@ func _add_kart_rows() -> void:
 	_add_upgrade_row(
 		Color(0.96, 0.27, 0.36),
 		"Kart Fleet",
-		"Lvl %d / %d  (Tier %d)" % [k_lvl, _track.MAX_LEVEL, k_tier],
+		"Lvl %d / %d  (Tier %d / %d)" % [k_lvl, _track.MAX_LEVEL, k_tier, _track.TIER_COUNT],
 		float(_track.kart_level_in_tier()),
-		float(_track.LEVELS_PER_TIER),
+		float(_track.levels_in_current_kart_tier()),
 		"All karts upgraded simultaneously",
 		_track.can_upgrade_karts(),
 		_track.kart_upgrade_cost(),
@@ -202,23 +202,36 @@ func _add_facility_rows() -> void:
 		"lighting":       Color(0.95, 0.95, 0.60),
 		"grandstand":     Color(0.65, 0.55, 0.78),
 	}
+	var current_tier: int = _track.track_tier()
 	for fac: String in Facilities.facility_names():
-		var lv := Facilities.get_level(fac)
-		var label := "Lvl %d / %d" % [lv, Facilities.MAX_LEVEL]
-		if lv == 0:
+		var lv: int = Facilities.get_level(fac)
+		var unlocked: bool = Facilities.is_unlocked(fac, current_tier)
+		var label: String
+		var max_label: String = "MAX LEVEL"
+		var detail: String = Facilities.effect_text(fac)
+		if not unlocked:
+			label = "LOCKED"
+			max_label = "Requires Track Tier %d" % Facilities.required_track_tier(fac)
+			detail = "Upgrade the track to tier %d to unlock this facility." \
+				% Facilities.required_track_tier(fac)
+		elif lv == 0:
 			label = "NOT BUILT"
+		else:
+			label = "Lvl %d / %d" % [lv, Facilities.MAX_LEVEL]
 		_add_upgrade_row(
 			colors.get(fac, Color.WHITE),
 			Facilities.display_name(fac),
 			label,
 			float(lv),
 			float(Facilities.MAX_LEVEL),
-			Facilities.effect_text(fac),
-			Facilities.can_upgrade(fac),
+			detail,
+			unlocked and Facilities.can_upgrade(fac),
 			Facilities.upgrade_cost(fac),
 			func(f := fac):
 				Facilities.upgrade(f)
-				_build_rows()
+				_build_rows(),
+			"Upgrade",
+			max_label
 		)
 
 
