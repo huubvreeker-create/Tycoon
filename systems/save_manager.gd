@@ -11,7 +11,10 @@ extends Node
 ##
 
 const SAVE_PATH: String = "user://savegame.json"
-const SAVE_VERSION: int = 1
+const SAVE_VERSION: int = 2
+const OFFLINE_MAX_HOURS: float = 12.0      # earnings cap window
+const OFFLINE_EFFICIENCY: float = 0.50     # offline rate vs. live rate
+const OFFLINE_MIN_SECONDS: float = 30.0    # below this, no welcome popup
 
 # Set by main.gd / Track at scene-ready time so autosave knows what to capture.
 var track: Node = null
@@ -24,12 +27,27 @@ var pending_track_state: Dictionary = {}
 # confirmation and re-display the event tag if one was active.
 var just_loaded: bool = false
 
+# Populated by _compute_offline_progress on cold start. The welcome
+# popup reads this on _ready and clears the .show flag once shown.
+var offline_summary: Dictionary = {}
+
 
 func _ready() -> void:
-	# Defer autosave to the end of the frame so every other day_ended
-	# handler (maintenance, salaries, day-end alert) has finished running
-	# and the ledger captured by the save reflects the final state.
 	EventBus.day_ended.connect(_on_day_ended_autosave)
+	# Auto-load any existing save on cold start. This runs BEFORE the main
+	# scene is constructed, so Track will pick up pending_track_state and
+	# build the right tier from the start.
+	if has_save_file():
+		_cold_load()
+
+
+func _notification(what: int) -> void:
+	# Save the moment the OS is about to swap the app out so the
+	# offline-progress timestamp is fresh when the player returns.
+	if what == NOTIFICATION_APPLICATION_PAUSED \
+			or what == NOTIFICATION_WM_CLOSE_REQUEST \
+			or what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		save_game()
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +114,7 @@ func consume_pending_track_state() -> Dictionary:
 func _serialize() -> Dictionary:
 	var data := {
 		"version": SAVE_VERSION,
+		"save_timestamp": Time.get_unix_time_from_system(),
 		"economy": {
 			"cash": EconomyManager.cash,
 			"revenue_today": EconomyManager.revenue_today,
@@ -188,9 +207,65 @@ func _deserialize(data: Dictionary) -> void:
 
 
 # ---------------------------------------------------------------------------
-# Autosave
+# Autosave + cold-load + offline progress
 # ---------------------------------------------------------------------------
 func _on_day_ended_autosave(_summary: Dictionary) -> void:
 	# Wait until all other day_ended handlers (maintenance, salaries, etc.)
 	# have run before snapshotting state.
 	call_deferred("save_game")
+
+
+func _cold_load() -> void:
+	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var content := file.get_as_text()
+	var parsed: Variant = JSON.parse_string(content)
+	if not (parsed is Dictionary):
+		return
+	var data: Dictionary = parsed
+	_deserialize(data)
+	# Compute offline progress against the SAVED snapshot (the live Track
+	# isn't in the scene yet — its _ready runs after this autoload).
+	if data.has("save_timestamp") and data.has("track"):
+		var elapsed: float = Time.get_unix_time_from_system() - float(data["save_timestamp"])
+		if elapsed > OFFLINE_MIN_SECONDS:
+			_compute_offline_progress(elapsed, data["track"] as Dictionary)
+
+
+func _compute_offline_progress(elapsed_seconds: float, track_data: Dictionary) -> void:
+	var raw_hours: float = elapsed_seconds / 3600.0
+	var capped_hours: float = clampf(raw_hours, 0.0, OFFLINE_MAX_HOURS)
+	var capped_seconds: float = capped_hours * 3600.0
+
+	# Estimate the venue's earnings rate per real-time second.
+	var passive_per_day: float = float(Facilities.total_daily_passive_income())
+	var kart_count: int = int(track_data.get("kart_count", 5))
+	var kart_lvl: int = int(track_data.get("kart_level", 1))
+	var track_lvl: int = int(track_data.get("track_level", 1))
+	# Rough but sane: each kart turns over a customer every race; bigger
+	# tier and higher fleet level means richer customers.
+	var ticket_per_day: float = float(kart_count) * (40.0 + kart_lvl * 4.0 + track_lvl * 1.5)
+	var per_day_total: float = passive_per_day + ticket_per_day
+	var per_second_rate: float = per_day_total / GameManager.DAY_LENGTH_SECONDS
+	var earnings: int = int(round(capped_seconds * per_second_rate * OFFLINE_EFFICIENCY))
+
+	if earnings > 0:
+		# Bump cash directly so the offline lump sum doesn't pollute the
+		# day-revenue ledger or trigger per-event signal storms.
+		EconomyManager.cash += earnings
+		EventBus.cash_changed.emit(EconomyManager.cash)
+
+	offline_summary = {
+		"hours_away":   raw_hours,
+		"hours_credited": capped_hours,
+		"earnings":     earnings,
+		"capped":       raw_hours > OFFLINE_MAX_HOURS,
+		"show":         earnings > 0,
+	}
+
+
+func consume_offline_summary() -> Dictionary:
+	var s := offline_summary.duplicate()
+	offline_summary = {}
+	return s

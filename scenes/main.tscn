@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main_script"]
 [ext_resource type="PackedScene" path="res://scenes/track.tscn" id="2_track"]
@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://scripts/camera_controller.gd" id="5_camera_script"]
 [ext_resource type="Script" path="res://scripts/facility_visuals.gd" id="6_facility_visuals"]
 [ext_resource type="PackedScene" path="res://ui/settings_popup.tscn" id="7_settings"]
+[ext_resource type="PackedScene" path="res://ui/welcome_popup.tscn" id="8_welcome"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_top_color = Color(0.10, 0.12, 0.22, 1)
@@ -75,3 +76,5 @@ track_path = NodePath("../Track")
 [node name="UpgradePopup" parent="PopupHost" instance=ExtResource("4_popup")]
 
 [node name="SettingsPopup" parent="PopupHost" instance=ExtResource("7_settings")]
+
+[node name="WelcomePopup" parent="PopupHost" instance=ExtResource("8_welcome")]
