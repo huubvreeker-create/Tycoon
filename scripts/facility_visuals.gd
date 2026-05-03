@@ -36,8 +36,14 @@ var _root_holders := {}  # facility name → Node3D holder
 var _decoration_holder: Node3D
 var _customer_holder: Node3D
 var _traffic_holder: Node3D
-var _traffic_cars: Array = []
-var _traffic_spawn_timer: float = 2.0
+# Per-customer visitor visuals: customer_id (int) → state Dictionary.
+# Each visitor owns a car + a person mesh and progresses through the
+# arrival → parked → walking_in → queueing → racing → walking_out →
+# leaving lifecycle, mirroring the real Customer's logical state.
+var _visitors: Dictionary = {}
+# Free parking-spot indices — assigned to a visitor on arrival,
+# released when they leave. Indices match (row, col) tuples.
+var _free_parking_spots: Array = []
 
 
 func _ready() -> void:
@@ -69,8 +75,10 @@ func _ready() -> void:
 	# stats, not new geometry), so we only need to rebuild facility
 	# layout on track_tier_changed.
 	EventBus.track_tier_changed.connect(_on_tier_changed.unbind(2))
-	EventBus.queue_changed.connect(_on_queue_changed.unbind(1))
-	EventBus.customer_count_changed.connect(_on_queue_changed.unbind(1))
+	# Customer signals drive the visitor visuals — each arriving
+	# customer gets a car + a person, each leaving customer drives off.
+	EventBus.customer_arrived.connect(_on_customer_arrived)
+	EventBus.customer_left.connect(_on_customer_left.unbind(2))
 	# Defer first build so the track has constructed its path/footprint.
 	call_deferred("_rebuild_all")
 
@@ -79,7 +87,7 @@ func _rebuild_all() -> void:
 	for facility: String in Facilities.facility_names():
 		_rebuild_one(facility)
 	_rebuild_decorations()
-	_rebuild_customers()
+	_rebuild_parking_spot_pool()
 
 
 func _rebuild_decorations() -> void:
@@ -95,29 +103,41 @@ func _rebuild_decorations() -> void:
 	_build_decorative_props(_decoration_holder)
 
 
-func _rebuild_customers() -> void:
-	if _track == null or _customer_holder == null:
+func _rebuild_parking_spot_pool() -> void:
+	# Compute every (row, col) parking spot the lot currently has and
+	# rebuild the free-spot pool from that. Visitors already in the lot
+	# keep their assigned spot; new arrivals draw from the freshly
+	# computed free pool.
+	_free_parking_spots.clear()
+	var lvl: int = Facilities.parking_level
+	if lvl <= 0:
 		return
-	for child in _customer_holder.get_children():
-		child.queue_free()
-	# Total figures = active queue + racing customers. Cap so a huge
-	# queue doesn't drown the camera in capsule people.
-	var live_count: int = _track.queue.size() + _track.racing.size()
-	var figure_count: int = clampi(live_count, 0, 60)
-	if figure_count > 0:
-		_build_walking_customers(_customer_holder, figure_count)
-
-
-func _on_queue_changed() -> void:
-	_rebuild_customers()
+	var rows: int = clampi(2 + lvl / 6, 2, 12)
+	var cols: int = clampi(5 + lvl / 4, 5, 22)
+	# Currently-occupied spots — preserved so we don't double-assign
+	# them to a new visitor.
+	var taken: Dictionary = {}
+	for v in _visitors.values():
+		var spot: Vector2i = v.get("parking_spot", Vector2i(-1, -1))
+		if spot.x >= 0:
+			taken[spot] = true
+	for r in range(rows):
+		for c in range(cols):
+			var key: Vector2i = Vector2i(r, c)
+			if not taken.has(key):
+				_free_parking_spots.append(key)
+	_free_parking_spots.shuffle()
 
 
 func _on_facility_upgraded(facility: String, _level: int) -> void:
 	_rebuild_one(facility)
 	# The approach road's endpoint sits against the parking lot, so
 	# rebuild the static decorations whenever parking is upgraded.
+	# Also refresh the parking-spot pool so future arrivals can use
+	# any newly-added spots.
 	if facility == "parking":
 		_rebuild_decorations()
+		_rebuild_parking_spot_pool()
 
 
 func _on_tier_changed() -> void:
@@ -1010,39 +1030,9 @@ func _build_parking(parent: Node3D, level: int) -> void:
 		Vector3(center.x, 0.20, center.z + lot_d * 0.5 + 0.15),
 		Vector3(lot_w * 0.4, 0.30, 0.10))
 
-	# Parked cars — about 50% occupancy at the current level. Use a
-	# seeded RNG so the layout is stable across rebuilds.
-	var max_cars: int = (rows * cols)
-	var occupancy: int = mini(level * 3, max_cars / 2 + 1)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = level * 7919 + 13
-	var taken := {}
-	var attempts: int = 0
-	while taken.size() < occupancy and attempts < occupancy * 4:
-		attempts += 1
-		var r: int = rng.randi() % rows
-		var c: int = rng.randi() % cols
-		var key: String = "%d_%d" % [r, c]
-		if taken.has(key):
-			continue
-		taken[key] = true
-		var car_x: float = center.x - lot_w * 0.5 + float(c) * space_w + space_w * 0.5
-		var car_z: float = center.z - lot_d * 0.5 + float(r) * space_d + space_d * 0.5
-		var car_color := Color(
-			rng.randf_range(0.30, 1.0),
-			rng.randf_range(0.30, 1.0),
-			rng.randf_range(0.30, 1.0)
-		)
-		# Car body
-		_make_box(parent,
-			Vector3(space_w * 0.7, 0.45, space_d * 0.78),
-			Vector3(car_x, 0.40, car_z),
-			car_color)
-		# Windshield (darker top)
-		_make_box(parent,
-			Vector3(space_w * 0.6, 0.30, space_d * 0.4),
-			Vector3(car_x, 0.65, car_z - space_d * 0.05),
-			car_color.darkened(0.45))
+	# (The lot's parked cars are now DYNAMIC — they're the visitor
+	# vehicles spawned by the customer-traffic system, each tied to a
+	# real Customer in the queue. No static decoration cars here.)
 
 	# Click target covering the whole lot.
 	_add_facility_click_area(parent, "parking",
@@ -1419,93 +1409,6 @@ func _add_pole_flag(parent: Node3D, top_pos: Vector3, color: Color) -> void:
 
 
 # ---------------------------------------------------------------------------
-# Live customer figures — capsule + sphere people scattered across the
-# venue's walkable areas, count tracking the live queue + racing tally
-# so the place visibly fills up as the game runs.
-# ---------------------------------------------------------------------------
-func _build_walking_customers(parent: Node3D, count: int) -> void:
-	var rng := RandomNumberGenerator.new()
-	# Re-seed each rebuild so figures don't all freeze in the same
-	# spots when the queue grows tick-by-tick.
-	rng.seed = randi()
-	var hub: Vector3 = _hub_position()
-	var plaza_z: float = hub.z
-	var plaza_w: float = _track_outer_x(0.0) * 2.0 + 6.0
-	var plaza_d: float = 8.0
-	# A handful of waypoint zones — plaza interior, walkway to
-	# grandstand entrance, branch stubs to lounge / cafeteria / merch.
-	# Each figure picks one zone weighted by area.
-	var grandstand_z: float = -_track_outer_z(1.5)
-	var lounge_branch_z: float = -_track_outer_z(13.5)
-	for i in range(count):
-		var zone: int = rng.randi_range(0, 5)
-		var pos: Vector3
-		match zone:
-			0:  # plaza interior (most common — split across zones 0-2)
-				pos = Vector3(
-					rng.randf_range(-plaza_w * 0.4, plaza_w * 0.4),
-					0.0,
-					plaza_z + rng.randf_range(-plaza_d * 0.4, plaza_d * 0.4))
-			1:
-				pos = Vector3(
-					rng.randf_range(-plaza_w * 0.4, plaza_w * 0.4),
-					0.0,
-					plaza_z + rng.randf_range(-plaza_d * 0.4, plaza_d * 0.4))
-			2:  # grandstand walkway
-				var t: float = rng.randf()
-				pos = Vector3(
-					rng.randf_range(-1.4, 1.4),
-					0.0,
-					lerpf(plaza_z + plaza_d * 0.5, grandstand_z, t))
-			3:  # cafeteria branch
-				pos = Vector3(
-					rng.randf_range(-plaza_w * 0.45, -plaza_w * 0.30),
-					0.0,
-					plaza_z - plaza_d * 0.5 - rng.randf_range(0.0, 1.5))
-			4:  # merch branch
-				pos = Vector3(
-					rng.randf_range(plaza_w * 0.30, plaza_w * 0.45),
-					0.0,
-					plaza_z - plaza_d * 0.5 - rng.randf_range(0.0, 1.5))
-			_:  # lounge stub
-				pos = Vector3(
-					rng.randf_range(-1.2, 1.2),
-					0.0,
-					lerpf(plaza_z - plaza_d * 0.5, lounge_branch_z,
-						rng.randf_range(0.2, 0.9)))
-		_make_walking_figure(parent, pos, rng)
-
-
-func _make_walking_figure(parent: Node3D, base_pos: Vector3, rng: RandomNumberGenerator) -> void:
-	var shirt: Color = _SPECTATOR_SHIRTS[rng.randi() % _SPECTATOR_SHIRTS.size()]
-	# Body — capsule
-	var body := MeshInstance3D.new()
-	var bm := CylinderMesh.new()
-	bm.top_radius = 0.16
-	bm.bottom_radius = 0.20
-	bm.height = 0.60
-	body.mesh = bm
-	var bmat := StandardMaterial3D.new()
-	bmat.albedo_color = shirt
-	bmat.roughness = 0.9
-	body.material_override = bmat
-	body.position = base_pos + Vector3(0, 0.30, 0)
-	parent.add_child(body)
-	# Head
-	var head := MeshInstance3D.new()
-	var hm := SphereMesh.new()
-	hm.radius = 0.13
-	hm.height = 0.26
-	head.mesh = hm
-	var hmat := StandardMaterial3D.new()
-	hmat.albedo_color = _SPECTATOR_SKIN
-	hmat.roughness = 0.85
-	head.material_override = hmat
-	head.position = base_pos + Vector3(0, 0.74, 0)
-	parent.add_child(head)
-
-
-# ---------------------------------------------------------------------------
 # Decorative props — flower beds along the plaza, banners between
 # lighting poles, walkway stripes. All small bright touches that
 # bring the venue to life without changing any gameplay mechanics.
@@ -1716,52 +1619,350 @@ func _parking_lot_depth() -> float:
 
 
 # ---------------------------------------------------------------------------
-# Animated visiting-car traffic
+# Customer-driven visitor lifecycle
 # ---------------------------------------------------------------------------
-# Cars spawn off-map south of the gate, drive into the venue along
-# the approach road, "park" at the south edge of the parking lot for
-# a few seconds, then reverse the path and despawn off-map. Cap at
-# _MAX_TRAFFIC simultaneous cars so we don't flood the camera.
-const _MAX_TRAFFIC: int = 8
-const _TRAFFIC_CAR_SPEED: float = 9.0       # metres per second on road
-const _TRAFFIC_PARK_DURATION: float = 4.0   # seconds parked before leaving
-const _TRAFFIC_SPAWN_INTERVAL: float = 4.5  # base spawn cadence
+# Each Customer owns a visitor visual that runs through:
+#   arriving → parked_arriving → walking_in → queueing → racing →
+#   walking_out → leaving → departed
+# A car drives in, parks, person walks out, joins the plaza queue,
+# disappears into the kart while racing, reappears at the grandstand
+# walkway after the race, walks back, gets in their car, drives out.
+const _VISITOR_CAR_SPEED: float = 9.0
+const _VISITOR_WALK_SPEED: float = 1.6
+const _VISITOR_PARK_PAUSE: float = 1.2     # seconds car waits before person exits
+
+
+func _on_customer_arrived(customer_id: int) -> void:
+	if _track == null or _visitors.has(customer_id):
+		return
+	var path: Array[Vector3] = _arrival_drive_path(customer_id)
+	if path.is_empty():
+		return
+	var car_color := Color.from_hsv(randf(), randf_range(0.45, 0.75),
+		randf_range(0.55, 0.85))
+	var person_color: Color = _SPECTATOR_SHIRTS[randi() % _SPECTATOR_SHIRTS.size()]
+	var car: Node3D = _build_visitor_car(car_color)
+	car.position = Vector3(path[0].x, 0.35, path[0].z)
+	_visitors[customer_id] = {
+		"car": car,
+		"car_color": car_color,
+		"person": null,
+		"person_color": person_color,
+		"path": path,
+		"idx": 0,
+		"progress": 0.0,
+		"state": "arriving",
+		"wait_until": 0.0,
+		# Plaza spot the person will stand on while queueing.
+		"plaza_spot": _pick_plaza_spot(),
+		# Parking spot key (set by _arrival_drive_path).
+		"parking_spot": _last_assigned_spot,
+	}
+
+
+# Buffer for the most recently assigned parking spot — set inside
+# _arrival_drive_path so _on_customer_arrived can pin it onto the
+# visitor record without recomputing.
+var _last_assigned_spot: Vector2i = Vector2i(-1, -1)
+
+
+func _on_customer_left() -> void:
+	# customer_left fires with (customer_id, satisfaction). The signal
+	# bind drops both args; we don't need the id because we transition
+	# every still-queueing or still-racing visitor whose Customer is
+	# no longer in the live track.queue / track.racing arrays. The
+	# per-frame _process() catches stragglers anyway.
+	pass
 
 
 func _process(delta: float) -> void:
-	if _traffic_holder == null:
+	if _visitors.is_empty():
 		return
-	# Tick existing cars + cull finished ones.
-	var i: int = _traffic_cars.size() - 1
-	while i >= 0:
-		var car: Dictionary = _traffic_cars[i]
-		_tick_traffic_car(car, delta)
-		if car.get("done", false):
-			var mesh: Node = car.get("mesh")
-			if mesh and is_instance_valid(mesh):
-				mesh.queue_free()
-			_traffic_cars.remove_at(i)
-		i -= 1
-	# Periodic spawn.
-	_traffic_spawn_timer -= delta
-	if _traffic_spawn_timer <= 0.0:
-		_traffic_spawn_timer = _TRAFFIC_SPAWN_INTERVAL \
-			+ randf_range(-1.0, 1.5)
-		if _traffic_cars.size() < _MAX_TRAFFIC and _track != null:
-			_spawn_traffic_car()
+	# Build a quick lookup of currently-live customer ids.
+	var live_ids: Dictionary = {}
+	if _track != null:
+		for c: Customer in _track.queue:
+			live_ids[c.id] = "queue"
+		for c: Customer in _track.racing:
+			live_ids[c.id] = "racing"
+	# Tick every visitor + flag departures.
+	var to_remove: Array = []
+	for cid: int in _visitors.keys():
+		var v: Dictionary = _visitors[cid]
+		# State transitions driven by track state.
+		var live_state: String = String(live_ids.get(cid, ""))
+		var current_state: String = String(v.get("state", ""))
+		if live_state == "racing" and current_state == "queueing":
+			v["state"] = "racing"
+			var person: Node3D = v.get("person")
+			if person and is_instance_valid(person):
+				person.visible = false
+		elif live_state == "queue" and current_state == "racing":
+			# Customer requeued (very rare) — show the person again.
+			v["state"] = "queueing"
+			var person2: Node3D = v.get("person")
+			if person2 and is_instance_valid(person2):
+				person2.visible = true
+		elif live_state == "" and current_state in [
+				"queueing", "racing", "walking_in", "parked_arriving"]:
+			# Customer is gone — start the leaving sequence.
+			_start_visitor_departure(v)
+		_tick_visitor(v, delta)
+		if v.get("state", "") == "departed":
+			to_remove.append(cid)
+	for cid: int in to_remove:
+		_despawn_visitor(cid)
 
 
-func _spawn_traffic_car() -> void:
-	var path: Array[Vector3] = _compute_traffic_path()
-	if path.is_empty():
+func _tick_visitor(v: Dictionary, delta: float) -> void:
+	var state: String = String(v.get("state", ""))
+	match state:
+		"arriving":
+			_advance_path(v, delta, _VISITOR_CAR_SPEED, "car")
+			if v.get("idx", 0) >= (v.get("path", []) as Array).size() - 1:
+				v["state"] = "parked_arriving"
+				v["wait_until"] = _now_seconds() + _VISITOR_PARK_PAUSE
+		"parked_arriving":
+			if _now_seconds() >= float(v.get("wait_until", 0.0)):
+				_begin_walk_in(v)
+		"walking_in":
+			_advance_path(v, delta, _VISITOR_WALK_SPEED, "person")
+			if v.get("idx", 0) >= (v.get("path", []) as Array).size() - 1:
+				v["state"] = "queueing"
+		"queueing":
+			pass  # idle on plaza
+		"racing":
+			pass  # person hidden; kart represents them
+		"walking_out":
+			_advance_path(v, delta, _VISITOR_WALK_SPEED, "person")
+			if v.get("idx", 0) >= (v.get("path", []) as Array).size() - 1:
+				_begin_drive_out(v)
+		"leaving":
+			_advance_path(v, delta, _VISITOR_CAR_SPEED, "car")
+			if v.get("idx", 0) >= (v.get("path", []) as Array).size() - 1:
+				v["state"] = "departed"
+		"departed":
+			pass
+
+
+func _advance_path(v: Dictionary, delta: float, speed: float, target: String) -> void:
+	var path: Array = v.get("path", [])
+	var idx: int = int(v.get("idx", 0))
+	if idx >= path.size() - 1:
 		return
-	# Random visitor-car colour. Slightly desaturated so they read as
-	# civilians, not racing karts.
-	var hue := randf()
-	var col := Color.from_hsv(hue, randf_range(0.45, 0.75),
-		randf_range(0.55, 0.85))
+	var a: Vector3 = path[idx]
+	var b: Vector3 = path[idx + 1]
+	var seg: Vector3 = b - a
+	var seg_len: float = seg.length()
+	if seg_len < 0.01:
+		v["idx"] = idx + 1
+		v["progress"] = 0.0
+		return
+	var p_now: float = float(v.get("progress", 0.0)) + speed * delta / seg_len
+	var node: Node3D = v.get(target) as Node3D
+	if node == null or not is_instance_valid(node):
+		return
+	if p_now >= 1.0:
+		v["progress"] = 0.0
+		v["idx"] = idx + 1
+		var snap_y: float = (0.35 if target == "car" else 0.0)
+		node.position = Vector3(b.x, snap_y, b.z)
+		return
+	v["progress"] = p_now
+	var pos: Vector3 = a.lerp(b, p_now)
+	var y_off: float = (0.35 if target == "car" else 0.0)
+	if target == "person":
+		# Bob slightly while walking.
+		y_off = sin(p_now * 12.0) * 0.04
+	node.position = Vector3(pos.x, y_off, pos.z)
+	# Face direction of motion.
+	var dir2 := Vector2(seg.x, seg.z)
+	if dir2.length_squared() > 0.0001:
+		node.rotation.y = atan2(-dir2.y, dir2.x)
 
-	# Body
+
+# Lifecycle helpers ---------------------------------------------------------
+func _begin_walk_in(v: Dictionary) -> void:
+	# Person spawns at the parked car and walks to the plaza spot.
+	var car: Node3D = v.get("car") as Node3D
+	if car == null:
+		v["state"] = "departed"
+		return
+	var person: Node3D = _build_visitor_person(v.get("person_color", Color.WHITE))
+	person.position = Vector3(car.position.x, 0.0, car.position.z)
+	v["person"] = person
+	v["path"] = _walk_to_plaza_path(car.position, v.get("plaza_spot", Vector3.ZERO))
+	v["idx"] = 0
+	v["progress"] = 0.0
+	v["state"] = "walking_in"
+
+
+func _start_visitor_departure(v: Dictionary) -> void:
+	# Person walks back from plaza (or grandstand area, if they were
+	# racing) to the car, then car drives out.
+	var car: Node3D = v.get("car") as Node3D
+	if car == null:
+		v["state"] = "departed"
+		return
+	var person: Node3D = v.get("person") as Node3D
+	# If the person was hidden during racing, reappear at the
+	# grandstand walkway entrance to walk back from there.
+	if person and not person.visible:
+		var hub: Vector3 = _hub_position()
+		var grandstand_z: float = -_track_outer_z(1.5)
+		person.visible = true
+		person.position = Vector3(0.0, 0.0,
+			(hub.z + grandstand_z) * 0.5)
+	if person == null or not is_instance_valid(person):
+		# Edge case — just drive the car out.
+		v["path"] = _drive_out_path(car.position)
+		v["idx"] = 0
+		v["progress"] = 0.0
+		v["state"] = "leaving"
+		return
+	v["path"] = _walk_back_to_car_path(person.position, car.position)
+	v["idx"] = 0
+	v["progress"] = 0.0
+	v["state"] = "walking_out"
+
+
+func _begin_drive_out(v: Dictionary) -> void:
+	# Hide the person (they're "in the car" now) and start the drive
+	# out along the reverse approach road.
+	var person: Node3D = v.get("person") as Node3D
+	if person and is_instance_valid(person):
+		person.queue_free()
+	v["person"] = null
+	var car: Node3D = v.get("car") as Node3D
+	if car == null:
+		v["state"] = "departed"
+		return
+	v["path"] = _drive_out_path(car.position)
+	v["idx"] = 0
+	v["progress"] = 0.0
+	v["state"] = "leaving"
+
+
+func _despawn_visitor(cid: int) -> void:
+	var v: Dictionary = _visitors.get(cid, {})
+	var car: Node3D = v.get("car") as Node3D
+	var person: Node3D = v.get("person") as Node3D
+	if car and is_instance_valid(car):
+		car.queue_free()
+	if person and is_instance_valid(person):
+		person.queue_free()
+	# Release the parking spot.
+	var spot: Vector2i = v.get("parking_spot", Vector2i(-1, -1))
+	if spot.x >= 0:
+		_free_parking_spots.append(spot)
+	_visitors.erase(cid)
+
+
+# Path builders -------------------------------------------------------------
+func _arrival_drive_path(customer_id: int) -> Array[Vector3]:
+	# off-map → gate → elbow → lot_entry → assigned parking spot
+	var lot_d: float = _parking_lot_depth()
+	var lot_w: float = _parking_lot_width()
+	if lot_d <= 0.0 or lot_w <= 0.0:
+		_last_assigned_spot = Vector2i(-1, -1)
+		return []
+	# Pick a free parking spot. If pool is empty, refill from current
+	# layout (some spots may have been freed since last refresh).
+	if _free_parking_spots.is_empty():
+		_rebuild_parking_spot_pool()
+	if _free_parking_spots.is_empty():
+		_last_assigned_spot = Vector2i(-1, -1)
+		return []
+	var spot: Vector2i = _free_parking_spots.pop_back()
+	_last_assigned_spot = spot
+	var spot_world: Vector3 = _parking_spot_to_world(spot)
+	# Standard waypoints to the lot.
+	var parking_south_z: float = -_track_outer_z(4.0) - lot_d - 1.0
+	var parking_entry_x: float = -_track_outer_x(5.0) - lot_w * 0.5 - 1.5
+	var off_map: Vector3 = Vector3(_WORLD_GATE_X, 0.04, _WORLD_SOUTH - 6.0)
+	var inside_gate: Vector3 = Vector3(_WORLD_GATE_X, 0.04, _WORLD_SOUTH + 0.6)
+	var elbow: Vector3 = Vector3(_WORLD_GATE_X, 0.04, parking_south_z)
+	var lot_entry: Vector3 = Vector3(parking_entry_x, 0.04, parking_south_z)
+	# Drive into the lot — first to the spot's column (along x), then
+	# up its row (along z).
+	var into_lot_x: Vector3 = Vector3(spot_world.x, 0.04, parking_south_z)
+	return [off_map, inside_gate, elbow, lot_entry, into_lot_x, spot_world]
+
+
+func _drive_out_path(from: Vector3) -> Array[Vector3]:
+	var lot_d: float = _parking_lot_depth()
+	var lot_w: float = _parking_lot_width()
+	var parking_south_z: float = -_track_outer_z(4.0) - lot_d - 1.0
+	var parking_entry_x: float = -_track_outer_x(5.0) - lot_w * 0.5 - 1.5
+	var lot_entry: Vector3 = Vector3(parking_entry_x, 0.04, parking_south_z)
+	var off_map: Vector3 = Vector3(_WORLD_GATE_X, 0.04, _WORLD_SOUTH - 6.0)
+	var inside_gate: Vector3 = Vector3(_WORLD_GATE_X, 0.04, _WORLD_SOUTH + 0.6)
+	var elbow: Vector3 = Vector3(_WORLD_GATE_X, 0.04, parking_south_z)
+	# From parking spot → out via lot_entry → elbow → gate → off-map.
+	var out_of_lot: Vector3 = Vector3(from.x, 0.04, parking_south_z)
+	return [from, out_of_lot, lot_entry, elbow, inside_gate, off_map]
+
+
+func _walk_to_plaza_path(from: Vector3, plaza_spot: Vector3) -> Array[Vector3]:
+	# Walk from the parking spot toward the plaza, with a single
+	# elbow at the parking lot's exit so the route looks deliberate.
+	var lot_d: float = _parking_lot_depth()
+	var lot_w: float = _parking_lot_width()
+	var parking_south_z: float = -_track_outer_z(4.0) - lot_d - 1.0
+	var parking_entry_x: float = -_track_outer_x(5.0) - lot_w * 0.5 - 1.5
+	var lot_exit_walk: Vector3 = Vector3(parking_entry_x + 2.0, 0.0,
+		parking_south_z + 2.0)
+	return [
+		Vector3(from.x, 0.0, from.z),
+		lot_exit_walk,
+		plaza_spot
+	]
+
+
+func _walk_back_to_car_path(from: Vector3, car_pos: Vector3) -> Array[Vector3]:
+	var lot_d: float = _parking_lot_depth()
+	var lot_w: float = _parking_lot_width()
+	var parking_south_z: float = -_track_outer_z(4.0) - lot_d - 1.0
+	var parking_entry_x: float = -_track_outer_x(5.0) - lot_w * 0.5 - 1.5
+	var lot_exit_walk: Vector3 = Vector3(parking_entry_x + 2.0, 0.0,
+		parking_south_z + 2.0)
+	return [
+		Vector3(from.x, 0.0, from.z),
+		lot_exit_walk,
+		Vector3(car_pos.x, 0.0, car_pos.z),
+	]
+
+
+func _parking_spot_to_world(spot: Vector2i) -> Vector3:
+	var lvl: int = Facilities.parking_level
+	var rows: int = clampi(2 + lvl / 6, 2, 12)
+	var cols: int = clampi(5 + lvl / 4, 5, 22)
+	var space_w: float = 1.6
+	var space_d: float = 2.8
+	var lot_w: float = float(cols) * space_w
+	var lot_d: float = float(rows) * space_d
+	var center_x: float = -_track_outer_x(5.0) - lot_w * 0.5
+	var center_z: float = -_track_outer_z(4.0) - lot_d * 0.5
+	var car_x: float = center_x - lot_w * 0.5 + float(spot.y) * space_w \
+		+ space_w * 0.5
+	var car_z: float = center_z - lot_d * 0.5 + float(spot.x) * space_d \
+		+ space_d * 0.5
+	return Vector3(car_x, 0.04, car_z)
+
+
+func _pick_plaza_spot() -> Vector3:
+	var hub: Vector3 = _hub_position()
+	var plaza_z: float = hub.z
+	var plaza_w: float = _track_outer_x(0.0) * 2.0 + 6.0
+	var plaza_d: float = 8.0
+	return Vector3(
+		randf_range(-plaza_w * 0.40, plaza_w * 0.40),
+		0.0,
+		plaza_z + randf_range(-plaza_d * 0.40, plaza_d * 0.40))
+
+
+# Mesh builders -------------------------------------------------------------
+func _build_visitor_car(col: Color) -> Node3D:
 	var car_mesh := MeshInstance3D.new()
 	var bm := BoxMesh.new()
 	bm.size = Vector3(1.6, 0.55, 3.2)
@@ -1771,10 +1972,8 @@ func _spawn_traffic_car() -> void:
 	mat.metallic = 0.4
 	mat.roughness = 0.5
 	car_mesh.material_override = mat
-	car_mesh.position = Vector3(path[0].x, 0.35, path[0].z)
 	_traffic_holder.add_child(car_mesh)
-
-	# Cabin / windshield (darker top half, set back)
+	# Cabin
 	var cabin := MeshInstance3D.new()
 	var cbm := BoxMesh.new()
 	cbm.size = Vector3(1.4, 0.45, 1.6)
@@ -1785,8 +1984,7 @@ func _spawn_traffic_car() -> void:
 	cabin.material_override = cmat
 	cabin.position = Vector3(0, 0.45, 0.1)
 	car_mesh.add_child(cabin)
-
-	# Four wheels
+	# Wheels
 	for off: Vector3 in [
 		Vector3( 0.85, -0.18,  1.10),
 		Vector3( 0.85, -0.18, -1.10),
@@ -1806,89 +2004,39 @@ func _spawn_traffic_car() -> void:
 		wheel.position = off
 		wheel.rotation = Vector3(0, 0, deg_to_rad(90))
 		car_mesh.add_child(wheel)
-
-	var car: Dictionary = {
-		"mesh": car_mesh,
-		"path": path,
-		"idx": 0,
-		"progress": 0.0,
-		"state": "driving_in",
-		"park_until": 0.0,
-		"done": false,
-	}
-	_traffic_cars.append(car)
+	return car_mesh
 
 
-func _compute_traffic_path() -> Array[Vector3]:
-	# Returns the 7-waypoint path:
-	#   off → gate → elbow → lot_entry  [PARK]  → elbow → gate → off
-	# If parking isn't built yet, no path exists (cars wouldn't have
-	# anywhere to go).
-	var lot_d: float = _parking_lot_depth()
-	var lot_w: float = _parking_lot_width()
-	if lot_d <= 0.0 or lot_w <= 0.0:
-		return []
-	var parking_south_z: float = -_track_outer_z(4.0) - lot_d - 1.0
-	var parking_entry_x: float = -_track_outer_x(5.0) - lot_w * 0.5 - 1.5
-	var off_map: Vector3 = Vector3(_WORLD_GATE_X, 0.04, _WORLD_SOUTH - 6.0)
-	var inside_gate: Vector3 = Vector3(_WORLD_GATE_X, 0.04, _WORLD_SOUTH + 0.6)
-	var elbow: Vector3 = Vector3(_WORLD_GATE_X, 0.04, parking_south_z)
-	var entry: Vector3 = Vector3(parking_entry_x, 0.04, parking_south_z)
-	return [off_map, inside_gate, elbow, entry, elbow, inside_gate, off_map]
+func _build_visitor_person(shirt: Color) -> Node3D:
+	var holder := Node3D.new()
+	_customer_holder.add_child(holder)
+	# Body
+	var body := MeshInstance3D.new()
+	var bm := CylinderMesh.new()
+	bm.top_radius = 0.16
+	bm.bottom_radius = 0.20
+	bm.height = 0.60
+	body.mesh = bm
+	var bmat := StandardMaterial3D.new()
+	bmat.albedo_color = shirt
+	bmat.roughness = 0.9
+	body.material_override = bmat
+	body.position = Vector3(0, 0.30, 0)
+	holder.add_child(body)
+	# Head
+	var head := MeshInstance3D.new()
+	var hm := SphereMesh.new()
+	hm.radius = 0.13
+	hm.height = 0.26
+	head.mesh = hm
+	var hmat := StandardMaterial3D.new()
+	hmat.albedo_color = _SPECTATOR_SKIN
+	hmat.roughness = 0.85
+	head.material_override = hmat
+	head.position = Vector3(0, 0.74, 0)
+	holder.add_child(head)
+	return holder
 
 
-func _tick_traffic_car(car: Dictionary, delta: float) -> void:
-	if car.get("done", false):
-		return
-	var mesh: Node3D = car.get("mesh") as Node3D
-	if mesh == null or not is_instance_valid(mesh):
-		car.done = true
-		return
-	var path: Array = car.get("path", [])
-	if path.size() < 2:
-		car.done = true
-		return
-
-	# Handle the parked-state pause (no movement, just countdown).
-	if car.get("state", "") == "parked":
-		var now_s: float = float(Time.get_ticks_msec()) / 1000.0
-		if now_s >= float(car.get("park_until", 0.0)):
-			car["state"] = "driving_out"
-		return
-
-	# Drive forward along current segment.
-	var idx: int = int(car.get("idx", 0))
-	if idx >= path.size() - 1:
-		car["done"] = true
-		return
-	var a: Vector3 = path[idx]
-	var b: Vector3 = path[idx + 1]
-	var seg: Vector3 = b - a
-	var seg_len: float = seg.length()
-	if seg_len < 0.01:
-		car["idx"] = idx + 1
-		car["progress"] = 0.0
-		return
-	var p_now: float = float(car.get("progress", 0.0)) \
-		+ _TRAFFIC_CAR_SPEED * delta / seg_len
-	if p_now >= 1.0:
-		# Segment done — snap to endpoint and advance.
-		car["progress"] = 0.0
-		car["idx"] = idx + 1
-		mesh.position = Vector3(b.x, 0.35, b.z)
-		# Trigger park state when we reach the lot entry (path[3]).
-		if car["idx"] == 3 and car.get("state", "") == "driving_in":
-			car["state"] = "parked"
-			var now_s2: float = float(Time.get_ticks_msec()) / 1000.0
-			car["park_until"] = now_s2 + _TRAFFIC_PARK_DURATION
-		elif car["idx"] >= path.size() - 1:
-			car["done"] = true
-		return
-	# Normal frame — interpolate.
-	car["progress"] = p_now
-	var pos: Vector3 = a.lerp(b, p_now)
-	mesh.position = Vector3(pos.x, 0.35, pos.z)
-	# Face the direction of travel.
-	var dir2 := Vector2(seg.x, seg.z)
-	if dir2.length_squared() > 0.0001:
-		mesh.rotation.y = atan2(-dir2.y, dir2.x)
+func _now_seconds() -> float:
+	return float(Time.get_ticks_msec()) / 1000.0
