@@ -5,7 +5,11 @@ class_name Customer extends RefCounted
 ## promote this to a Node2D if individual customers need physics.
 ##
 
-const PATIENCE_BASE: float = 30.0
+# Bumped from 30 to give visitors enough time to walk from the
+# parking lot all the way to the plaza on big-tier venues before
+# their patience runs out (max parking lot ↔ plaza walk is ~50 m
+# at brisk pace ≈ 17 s, so 60 s leaves a comfortable buffer).
+const PATIENCE_BASE: float = 60.0
 const SATISFACTION_BASE: float = 0.55
 
 static var _next_id: int = 0

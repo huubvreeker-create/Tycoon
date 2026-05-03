@@ -317,9 +317,16 @@ func _lerp_f_table(table: Dictionary) -> float:
 
 
 func current_speed() -> float:
-	var base := RACING_SPEED_BASE if racing else IDLE_SPEED_BASE
-	var component_bonus := KartComponents.engine_speed_bonus()
-	return base + (level - 1) * PER_LEVEL_SPEED_BONUS + component_bonus
+	# RACING speed compounds with kart level + engine component so a
+	# tier-10 maxed kart genuinely flies. IDLE speed is gentle —
+	# nudges up slightly with level but DOES NOT add the engine bonus.
+	# Without that cap an idle T10 kart cruises faster than a T1
+	# racing kart, which makes the venue look like everything's on
+	# hot laps even when no customers are racing.
+	if racing:
+		return RACING_SPEED_BASE + (level - 1) * PER_LEVEL_SPEED_BONUS \
+			+ KartComponents.engine_speed_bonus()
+	return IDLE_SPEED_BASE + (level - 1) * 0.01
 
 
 func is_busy() -> bool:

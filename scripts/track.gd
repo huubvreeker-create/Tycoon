@@ -648,7 +648,11 @@ func _build_ground() -> void:
 	ground = MeshInstance3D.new()
 	ground.name = "Ground"
 	var plane := PlaneMesh.new()
-	var size: float = 240.0
+	# Big enough to cover the world-border rectangle defined in
+	# facility_visuals.gd (-160..130 along X, -160..55 along Z) plus
+	# a comfortable buffer so the perimeter walls never float over
+	# the void.
+	var size: float = 360.0
 	plane.size = Vector2(size, size)
 	ground.mesh = plane
 	var mat := StandardMaterial3D.new()

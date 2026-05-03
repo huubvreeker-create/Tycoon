@@ -661,9 +661,10 @@ func _build_lounge(parent: Node3D, level: int) -> void:
 	var floor_h: float = 1.4
 	var h: float = floor_h * float(floors) + 0.6
 	# Sit BEHIND the grandstand AND the spectator concourse plaza on
-	# the -Z side. Plaza centre is at _track_outer_z(9) with a depth
-	# of 8, so the lounge front must clear _track_outer_z(14).
-	const SAFETY: float = 14.0
+	# the -Z side. Plaza centre is at _track_outer_z(14) with a depth
+	# of 8, so its back edge sits at _track_outer_z(18). Lounge front
+	# must clear that → SAFETY = 19 (1 m gap to plaza back).
+	const SAFETY: float = 19.0
 	var pos := Vector3(0.0, h * 0.5, -_track_outer_z(SAFETY) - d * 0.5)
 
 	# Main tower
@@ -1045,7 +1046,7 @@ func _build_marketing(parent: Node3D, level: int) -> void:
 	# Sits at the (+X, -Z) SE corner — north +Z is reserved for the
 	# pit complex, so the tower goes opposite the parking lot at the
 	# south-east corner of the venue.
-	var pole_h: float = 5.5 + float(level) * 0.35
+	var pole_h: float = 5.5 + float(level) * 0.18
 	const SAFETY: float = 3.5
 	var pos := Vector3(_track_outer_x(SAFETY), 0.0,
 		-_track_outer_z(SAFETY))
@@ -1064,9 +1065,11 @@ func _build_marketing(parent: Node3D, level: int) -> void:
 	pole.position = pos + Vector3(0, pole_h * 0.5, 0)
 	parent.add_child(pole)
 
-	# Billboard (emissive — looks like an LED display).
-	var bw: float = 3.0 + float(level) * 0.15
-	var bh: float = 1.8 + float(level) * 0.08
+	# Billboard (emissive — looks like an LED display). Scaling kept
+	# modest so a max-level board lands at ~7×3.6 m, similar to a
+	# real F1 trackside LED, not a stadium-sized JumboTron.
+	var bw: float = 3.0 + float(level) * 0.04
+	var bh: float = 1.8 + float(level) * 0.018
 	var board := MeshInstance3D.new()
 	board.name = "Billboard"
 	var board_mesh := BoxMesh.new()
@@ -1125,10 +1128,14 @@ const _TREE_FOLIAGE  := Color(0.30, 0.65, 0.28)
 # walkway radiates from it. Placed south of the track, close enough
 # to be a natural funnel point but well clear of the asphalt.
 func _hub_position() -> Vector3:
-	# Centred between the grandstand back (~track_outer+4) and the
-	# lounge front (~track_outer+14) — leaves room for an 8m-deep
-	# concourse plaza without overlapping either neighbour.
-	return Vector3(0.0, 0.0, -_track_outer_z(9.0))
+	# Centred south of the grandstand by enough margin that the 8 m
+	# plaza never clips the grandstand's back row. The grandstand
+	# extends out to track_outer + 1.5 + main_d (= up to ~5 m deep at
+	# max level, ×1.9 tier_scale at tier 10), so we need at least
+	# track_outer + 10 of clearance on the plaza front edge. With
+	# plaza_d = 8, hub.z = track_outer + 14 puts the front edge at
+	# track_outer + 10 and the back edge at track_outer + 18.
+	return Vector3(0.0, 0.0, -_track_outer_z(14.0))
 
 
 func _build_ticket_booth(parent: Node3D) -> void:
@@ -1208,7 +1215,7 @@ func _build_walkways(parent: Node3D) -> void:
 		merch_branch, 2.2, _WALKWAY_COLOR)
 	# Lounge sits directly behind the plaza — a short stub from the
 	# plaza back-edge meets the lounge entrance.
-	var lounge_branch := Vector3(0.0, 0.04, -_track_outer_z(13.5))
+	var lounge_branch := Vector3(0.0, 0.04, -_track_outer_z(18.5))
 	_make_road(parent, Vector3(0.0, 0.04, plaza_z - plaza_d * 0.5),
 		lounge_branch, 2.6, _WALKWAY_COLOR)
 
@@ -1259,35 +1266,135 @@ func _make_road(parent: Node3D, a: Vector3, b: Vector3, width: float, color: Col
 
 
 func _build_trees(parent: Node3D) -> void:
-	# Decorative trees scattered around the venue. The track is
-	# asymmetric (north pit complex extends ~22 m past STRAIGHT_Z)
-	# so the tree ring needs enough north-side clearance that no
-	# tree ends up inside the garages or paddock. ring_z is sized to
-	# the LARGER of (natural south-side margin) and (north pit
-	# clearance + a buffer).
+	# Decorative trees scattered AROUND the venue's facilities and
+	# OUT TO the world walls. We build a generous ellipse, then for
+	# every candidate sample test against:
+	#   1. world bounds (skip if it would clip the perimeter wall)
+	#   2. facility no-go rectangles (cafeteria, merch shop, parking,
+	#      lounge, marketing, pit complex) so trees never sprout
+	#      inside a building.
 	var loop_depth: float = _track.current_rz()
 	var center_z: float = _track.STRAIGHT_Z - loop_depth * 0.5
-	# Pit complex extends from STRAIGHT_Z out to roughly STRAIGHT_Z +
-	# asphalt_half + grass + pit_w + bay_d + paddock_d + safety ≈
-	# STRAIGHT_Z + 18 m, regardless of tier (constant pit dimensions).
-	# The ring centre is at STRAIGHT_Z - loop_depth/2 so the north
-	# clearance needed from centre = (STRAIGHT_Z + 18) - center_z =
-	# 18 + loop_depth/2.
-	var north_clearance: float = 18.0 + loop_depth * 0.5 + 6.0
-	var natural_clearance: float = (loop_depth * 0.5) + 14.0 \
-		+ _track.current_wave_amp()
-	var ring_x: float = _track_outer_x(18.0)
-	var ring_z: float = maxf(natural_clearance, north_clearance)
+	var ring_x: float = _track_outer_x(28.0)
+	# ring_z must clear: south parking (~south_extent + 38 m at max
+	# parking) AND north pit complex (~STRAIGHT_Z + 22). Take the
+	# larger of the two distances from the ring centre.
+	var south_clearance: float = (_track.south_extent_z(0.0) + 42.0) \
+		- absf(center_z)
+	var north_clearance: float = (_track.STRAIGHT_Z + 28.0) - center_z
+	var ring_z: float = maxf(loop_depth * 0.5 + 30.0,
+		maxf(south_clearance, north_clearance))
+
+	# Build facility no-go rectangles (axis-aligned, world coords).
+	# Tested with a small inflate so trees don't graze building corners.
+	var no_go: Array[Rect2] = _facility_exclusion_rects()
+
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 19370 + int(_track.track_tier())
-	var tree_count: int = 24
-	for i in range(tree_count):
-		var t: float = (float(i) + rng.randf_range(-0.1, 0.1)) / float(tree_count) * TAU
-		var jitter_r: float = rng.randf_range(0.0, 6.0)
+	var tree_target: int = 32
+	var attempts: int = 0
+	var placed: int = 0
+	while placed < tree_target and attempts < tree_target * 4:
+		attempts += 1
+		var t: float = rng.randf_range(0.0, TAU)
+		var jitter_r: float = rng.randf_range(0.0, 8.0)
 		var x: float = cos(t) * (ring_x + jitter_r)
 		var z: float = center_z + sin(t) * (ring_z + jitter_r)
+		# Clip to world bounds (with a small margin so trees don't
+		# poke through the perimeter wall).
+		if x < _WORLD_WEST + 4.0 or x > _WORLD_EAST - 4.0:
+			continue
+		if z < _WORLD_SOUTH + 4.0 or z > _WORLD_NORTH - 4.0:
+			continue
+		# Reject if inside any facility rectangle.
+		var rejected: bool = false
+		for r: Rect2 in no_go:
+			if r.has_point(Vector2(x, z)):
+				rejected = true
+				break
+		if rejected:
+			continue
 		var height: float = rng.randf_range(3.5, 5.5)
 		_make_tree(parent, Vector3(x, 0.0, z), height, rng)
+		placed += 1
+
+
+func _facility_exclusion_rects() -> Array[Rect2]:
+	# Axis-aligned bounding rectangles for every visible facility,
+	# inflated by 2 m so trees never sprout right against a wall.
+	# Returned in world-XZ coords (Rect2.position = top-left corner,
+	# size = width × depth where x=X-axis, y=Z-axis).
+	var rects: Array[Rect2] = []
+	var inflate: float = 2.0
+
+	# Cafeteria (-X side, all the way out past patio).
+	if Facilities.cafeteria_level > 0:
+		var c_lvl: int = Facilities.cafeteria_level
+		var c_w: float = 5.0 + c_lvl * 0.04
+		var c_d: float = 4.5 + c_lvl * 0.03
+		var c_patio_d: float = 2.5 + c_lvl * 0.04
+		var c_far_x: float = -_track_outer_x(4.0)
+		var c_near_x: float = c_far_x - c_w - c_patio_d
+		rects.append(Rect2(
+			c_near_x - inflate, -c_d * 0.5 - inflate,
+			(c_far_x - c_near_x) + inflate * 2,
+			c_d + inflate * 2))
+
+	# Merch shop (+X side).
+	if Facilities.merch_shop_level > 0:
+		var m_lvl: int = Facilities.merch_shop_level
+		var m_w: float = 3.5 + m_lvl * 0.04
+		var m_d: float = 3.0 + m_lvl * 0.03
+		var m_awning: float = m_w * 0.4
+		var m_near_x: float = _track_outer_x(4.0)
+		var m_far_x: float = m_near_x + m_awning + m_w
+		rects.append(Rect2(
+			m_near_x - inflate, -m_d * 0.5 - inflate,
+			(m_far_x - m_near_x) + inflate * 2,
+			m_d + inflate * 2))
+
+	# Lounge (south, behind plaza).
+	if Facilities.lounge_level > 0:
+		var l_lvl: int = Facilities.lounge_level
+		var l_w: float = 5.0 + l_lvl * 0.04
+		var l_d: float = 5.0 + l_lvl * 0.04
+		var l_z: float = -_track_outer_z(19.0) - l_d * 0.5
+		rects.append(Rect2(
+			-l_w * 0.5 - inflate, l_z - l_d * 0.5 - inflate,
+			l_w + inflate * 2,
+			l_d + inflate * 2))
+
+	# Parking lot.
+	if Facilities.parking_level > 0:
+		var lot_w: float = _parking_lot_width()
+		var lot_d: float = _parking_lot_depth()
+		var lot_cx: float = -_track_outer_x(5.0) - lot_w * 0.5
+		var lot_cz: float = -_track_outer_z(4.0) - lot_d * 0.5
+		rects.append(Rect2(
+			lot_cx - lot_w * 0.5 - inflate, lot_cz - lot_d * 0.5 - inflate,
+			lot_w + inflate * 2,
+			lot_d + inflate * 2))
+
+	# Marketing tower (+X / -Z corner).
+	if Facilities.marketing_level > 0:
+		var mk_pos_x: float = _track_outer_x(3.5)
+		var mk_pos_z: float = -_track_outer_z(3.5)
+		rects.append(Rect2(
+			mk_pos_x - 3.0 - inflate, mk_pos_z - 3.0 - inflate,
+			6.0 + inflate * 2,
+			6.0 + inflate * 2))
+
+	# Pit complex (north of straight). Always excluded — even the
+	# pit lane itself, since cars need to drive there.
+	var pit_z: float = _track.STRAIGHT_Z + 4.0    # near edge
+	var paddock_far_z: float = _track.STRAIGHT_Z + 22.0  # outer edge
+	var pit_half_x: float = _track.STRAIGHT_HALF + 4.0
+	rects.append(Rect2(
+		-pit_half_x - inflate, pit_z - inflate,
+		(pit_half_x * 2) + inflate * 2,
+		(paddock_far_z - pit_z) + inflate * 2))
+
+	return rects
 
 
 func _make_tree(parent: Node3D, base_pos: Vector3, height: float, rng: RandomNumberGenerator) -> void:
@@ -1628,7 +1735,9 @@ func _parking_lot_depth() -> float:
 # disappears into the kart while racing, reappears at the grandstand
 # walkway after the race, walks back, gets in their car, drives out.
 const _VISITOR_CAR_SPEED: float = 9.0
-const _VISITOR_WALK_SPEED: float = 1.6
+# 3.0 m/s — brisk walk, fast enough to cross the tier-10 parking lot
+# and reach the plaza inside the customer's patience window.
+const _VISITOR_WALK_SPEED: float = 3.0
 const _VISITOR_PARK_PAUSE: float = 1.2     # seconds car waits before person exits
 
 
