@@ -849,6 +849,37 @@ func _build_asphalt() -> void:
 	asphalt_csg.material_override = ribbon_material
 	add_child(asphalt_csg)
 
+	# Painted white edge lines along both sides of the asphalt — every
+	# real circuit has them and they clean up the overall silhouette
+	# from above. Built as two thin CSGPolygon3D extrusions.
+	var line_inset: float = 0.15
+	var line_width: float = 0.18
+	for side: float in [-1.0, 1.0]:
+		var line_csg := CSGPolygon3D.new()
+		line_csg.name = "EdgeLine_%s" % ("L" if side < 0 else "R")
+		line_csg.mode = CSGPolygon3D.MODE_PATH
+		line_csg.path_node = path.get_path()
+		line_csg.path_interval_type = CSGPolygon3D.PATH_INTERVAL_DISTANCE
+		line_csg.path_interval = 0.5
+		line_csg.path_joined = true
+		var inner: float = side * (w * 0.5 - line_inset - line_width)
+		var outer: float = side * (w * 0.5 - line_inset)
+		var x_a: float = minf(inner, outer)
+		var x_b: float = maxf(inner, outer)
+		line_csg.polygon = PackedVector2Array([
+			Vector2(x_a, 0.046),
+			Vector2(x_b, 0.046),
+			Vector2(x_b, 0.041),
+			Vector2(x_a, 0.041),
+		])
+		var line_mat := StandardMaterial3D.new()
+		line_mat.albedo_color = Color(0.95, 0.96, 0.98)
+		line_mat.emission_enabled = true
+		line_mat.emission = Color(0.95, 0.96, 0.98)
+		line_mat.emission_energy_multiplier = 0.35
+		line_csg.material_override = line_mat
+		add_child(line_csg)
+
 
 func _build_click_area() -> void:
 	# A flat box covering the track footprint so any click on the

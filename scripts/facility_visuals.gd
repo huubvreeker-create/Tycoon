@@ -1398,40 +1398,56 @@ func _facility_exclusion_rects() -> Array[Rect2]:
 
 
 func _make_tree(parent: Node3D, base_pos: Vector3, height: float, rng: RandomNumberGenerator) -> void:
-	# Trunk: short cylinder
+	# Trunk: short cylinder, gently flared at the base.
 	var trunk := MeshInstance3D.new()
 	trunk.name = "Trunk"
 	var trunk_mesh := CylinderMesh.new()
-	trunk_mesh.top_radius = 0.18
-	trunk_mesh.bottom_radius = 0.22
-	trunk_mesh.height = height * 0.40
+	trunk_mesh.top_radius = 0.16
+	trunk_mesh.bottom_radius = 0.24
+	trunk_mesh.height = height * 0.38
 	trunk.mesh = trunk_mesh
 	var trunk_mat := StandardMaterial3D.new()
 	trunk_mat.albedo_color = _TREE_TRUNK
 	trunk_mat.roughness = 0.95
 	trunk.material_override = trunk_mat
-	trunk.position = base_pos + Vector3(0, height * 0.20, 0)
+	trunk.position = base_pos + Vector3(0, height * 0.19, 0)
 	parent.add_child(trunk)
-	# Foliage: cone (cylinder with zero top radius).
-	var foliage := MeshInstance3D.new()
-	foliage.name = "Foliage"
-	var foliage_mesh := CylinderMesh.new()
-	foliage_mesh.top_radius = 0.05
-	foliage_mesh.bottom_radius = height * 0.32
-	foliage_mesh.height = height * 0.70
-	foliage.mesh = foliage_mesh
-	var foliage_mat := StandardMaterial3D.new()
-	# Slightly randomise foliage shade so the grove isn't uniform.
+
+	# Three stacked foliage cones — each one a bit narrower and a bit
+	# higher than the one below, gives the tree a fluffier "Christmas
+	# tree" silhouette instead of a single flat cone.
 	var shade: float = rng.randf_range(-0.06, 0.06)
-	foliage_mat.albedo_color = Color(
+	var base_foliage_y: float = height * 0.36
+	var foliage_albedo := Color(
 		clampf(_TREE_FOLIAGE.r + shade, 0.0, 1.0),
 		clampf(_TREE_FOLIAGE.g + shade, 0.0, 1.0),
 		clampf(_TREE_FOLIAGE.b + shade, 0.0, 1.0),
 	)
-	foliage_mat.roughness = 0.95
-	foliage.material_override = foliage_mat
-	foliage.position = base_pos + Vector3(0, height * 0.40 + height * 0.35, 0)
-	parent.add_child(foliage)
+	for i in range(3):
+		var layer_radius: float = height * (0.34 - 0.08 * float(i))
+		var layer_height: float = height * 0.32
+		var layer_y_offset: float = base_foliage_y + height * 0.18 * float(i)
+		var foliage := MeshInstance3D.new()
+		foliage.name = "Foliage_%d" % i
+		var fm := CylinderMesh.new()
+		fm.top_radius = max(0.05, layer_radius * 0.18)
+		fm.bottom_radius = layer_radius
+		fm.height = layer_height
+		foliage.mesh = fm
+		var fmat := StandardMaterial3D.new()
+		# Top layers slightly lighter to mimic sunlight catching the
+		# canopy top — subtle but reads professionally from above.
+		var layer_shade: float = float(i) * 0.04
+		fmat.albedo_color = Color(
+			clampf(foliage_albedo.r + layer_shade, 0.0, 1.0),
+			clampf(foliage_albedo.g + layer_shade, 0.0, 1.0),
+			clampf(foliage_albedo.b + layer_shade, 0.0, 1.0),
+		)
+		fmat.roughness = 0.95
+		foliage.material_override = fmat
+		foliage.position = base_pos + Vector3(0,
+			layer_y_offset + layer_height * 0.5, 0)
+		parent.add_child(foliage)
 
 
 # ---------------------------------------------------------------------------
@@ -1588,6 +1604,72 @@ func _build_decorative_props(parent: Node3D) -> void:
 			Vector3(fx, fy, plaza_z - plaza_d * 0.5 - 0.4),
 			c)
 
+	# Park benches along the back edge of the plaza, facing the
+	# track. Five benches evenly spaced.
+	var bench_count: int = 5
+	for i in range(bench_count):
+		var u: float = (float(i) + 0.5) / float(bench_count)
+		var bx: float = lerpf(-plaza_w * 0.40, plaza_w * 0.40, u)
+		# Skip the centre slot so it doesn't block the south path.
+		if absf(bx) < 3.5:
+			continue
+		_make_bench(parent, Vector3(bx, 0.0, plaza_z - plaza_d * 0.5 + 1.2))
+
+	# Trash bins — three small cylinders along the plaza front edge,
+	# in matching grey for venue-staff aesthetic.
+	for i in range(3):
+		var u: float = (float(i) + 0.5) / 3.0
+		var bx: float = lerpf(-plaza_w * 0.35, plaza_w * 0.35, u)
+		_make_trash_bin(parent, Vector3(bx, 0.0, plaza_z + plaza_d * 0.5 - 0.6))
+
+
+func _make_bench(parent: Node3D, base: Vector3) -> void:
+	# Two square legs + a horizontal slat seat + an angled back rail.
+	var bench_color := Color(0.45, 0.32, 0.20)
+	var leg_color := Color(0.20, 0.20, 0.24)
+	# Legs
+	for lx: float in [-0.65, 0.65]:
+		_make_box(parent, Vector3(0.08, 0.45, 0.40),
+			base + Vector3(lx, 0.225, 0.0), leg_color)
+	# Seat slat
+	_make_box(parent, Vector3(1.50, 0.06, 0.40),
+		base + Vector3(0.0, 0.48, 0.0), bench_color)
+	# Backrest (slightly behind the seat, higher).
+	_make_box(parent, Vector3(1.50, 0.30, 0.06),
+		base + Vector3(0.0, 0.68, -0.18), bench_color)
+
+
+func _make_trash_bin(parent: Node3D, base: Vector3) -> void:
+	var bin_color := Color(0.22, 0.32, 0.40)
+	var trim := Color(0.55, 0.60, 0.70)
+	var bin := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.22
+	cyl.bottom_radius = 0.22
+	cyl.height = 0.65
+	bin.mesh = cyl
+	var bm := StandardMaterial3D.new()
+	bm.albedo_color = bin_color
+	bm.metallic = 0.4
+	bm.roughness = 0.6
+	bin.material_override = bm
+	bin.position = base + Vector3(0, 0.325, 0)
+	parent.add_child(bin)
+	# Lid trim
+	var lid := MeshInstance3D.new()
+	var lcyl := CylinderMesh.new()
+	lcyl.top_radius = 0.24
+	lcyl.bottom_radius = 0.24
+	lcyl.height = 0.06
+	lid.mesh = lcyl
+	var lmat := StandardMaterial3D.new()
+	lmat.albedo_color = trim
+	lmat.metallic = 0.5
+	lmat.roughness = 0.4
+	lid.material_override = lmat
+	lid.position = base + Vector3(0, 0.68, 0)
+	parent.add_child(lid)
+
 
 # ---------------------------------------------------------------------------
 # World borders + approach road
@@ -1607,43 +1689,75 @@ const _WORLD_GATE_W: float =  10.0
 func _build_world_borders(parent: Node3D) -> void:
 	var wall_h: float = 1.0
 	var wall_color := Color(0.55, 0.56, 0.58)
+	var wall_dark := Color(0.42, 0.42, 0.46)
 	var post_color := Color(0.30, 0.30, 0.34)
+	var trim_color := Color(0.78, 0.80, 0.83)
 	var z_span: float = _WORLD_NORTH - _WORLD_SOUTH
 	var x_span: float = _WORLD_EAST - _WORLD_WEST
 	var center_z: float = (_WORLD_NORTH + _WORLD_SOUTH) * 0.5
 
-	# West wall — full height of the playable rectangle.
-	_make_box(parent, Vector3(0.40, wall_h, z_span),
-		Vector3(_WORLD_WEST, wall_h * 0.5, center_z),
-		wall_color)
-	# East wall.
-	_make_box(parent, Vector3(0.40, wall_h, z_span),
-		Vector3(_WORLD_EAST, wall_h * 0.5, center_z),
-		wall_color)
-	# North wall.
-	_make_box(parent, Vector3(x_span, wall_h, 0.40),
-		Vector3((_WORLD_WEST + _WORLD_EAST) * 0.5, wall_h * 0.5, _WORLD_NORTH),
-		wall_color)
+	# Helper: paint a wall as alternating panels (light / dark) every
+	# `panel_w` metres along the wall's long axis. Adds the visible
+	# "concrete fence panels" detail without spawning a new function.
+	const PANEL_W: float = 6.0
+	# West / East walls run along Z.
+	for side: float in [-1.0, 1.0]:
+		var x: float = _WORLD_WEST if side < 0 else _WORLD_EAST
+		var n_panels: int = int(z_span / PANEL_W)
+		for i in range(n_panels):
+			var u: float = (float(i) + 0.5) / float(n_panels)
+			var z_panel: float = lerpf(_WORLD_SOUTH + 0.4,
+				_WORLD_NORTH - 0.4, u)
+			var col: Color = wall_color if (i % 2 == 0) else wall_dark
+			_make_box(parent, Vector3(0.40, wall_h, PANEL_W * 0.95),
+				Vector3(x, wall_h * 0.5, z_panel), col)
+		# Top trim — a continuous lighter strip running along the wall.
+		_make_box(parent, Vector3(0.55, 0.10, z_span - 0.1),
+			Vector3(x, wall_h + 0.05, center_z), trim_color)
 
-	# South wall — split into two segments around the gate.
-	var west_seg_w: float = (_WORLD_GATE_X - _WORLD_GATE_W * 0.5) - _WORLD_WEST
-	var east_seg_w: float = _WORLD_EAST - (_WORLD_GATE_X + _WORLD_GATE_W * 0.5)
-	if west_seg_w > 0.1:
-		_make_box(parent, Vector3(west_seg_w, wall_h, 0.40),
-			Vector3(_WORLD_WEST + west_seg_w * 0.5, wall_h * 0.5, _WORLD_SOUTH),
-			wall_color)
-	if east_seg_w > 0.1:
-		_make_box(parent, Vector3(east_seg_w, wall_h, 0.40),
-			Vector3(_WORLD_EAST - east_seg_w * 0.5, wall_h * 0.5, _WORLD_SOUTH),
-			wall_color)
-	# Gate posts on either side of the gap — taller, dark, so the
-	# entrance reads from a distance.
-	_make_box(parent, Vector3(0.60, wall_h * 1.5, 0.60),
-		Vector3(_WORLD_GATE_X - _WORLD_GATE_W * 0.5, wall_h * 0.75, _WORLD_SOUTH),
-		post_color)
-	_make_box(parent, Vector3(0.60, wall_h * 1.5, 0.60),
-		Vector3(_WORLD_GATE_X + _WORLD_GATE_W * 0.5, wall_h * 0.75, _WORLD_SOUTH),
-		post_color)
+	# North wall.
+	var n_panels_x: int = int(x_span / PANEL_W)
+	for i in range(n_panels_x):
+		var u: float = (float(i) + 0.5) / float(n_panels_x)
+		var x_panel: float = lerpf(_WORLD_WEST + 0.4,
+			_WORLD_EAST - 0.4, u)
+		var col: Color = wall_color if (i % 2 == 0) else wall_dark
+		_make_box(parent, Vector3(PANEL_W * 0.95, wall_h, 0.40),
+			Vector3(x_panel, wall_h * 0.5, _WORLD_NORTH), col)
+	_make_box(parent, Vector3(x_span - 0.1, 0.10, 0.55),
+		Vector3((_WORLD_WEST + _WORLD_EAST) * 0.5, wall_h + 0.05, _WORLD_NORTH),
+		trim_color)
+
+	# South wall — two halves around the gate, each in panels.
+	var south_segments: Array[Array] = [
+		[_WORLD_WEST + 0.4, _WORLD_GATE_X - _WORLD_GATE_W * 0.5 - 0.1],
+		[_WORLD_GATE_X + _WORLD_GATE_W * 0.5 + 0.1, _WORLD_EAST - 0.4],
+	]
+	for seg: Array in south_segments:
+		var seg_a: float = float(seg[0])
+		var seg_b: float = float(seg[1])
+		var seg_w: float = seg_b - seg_a
+		if seg_w <= 0.1:
+			continue
+		var n_seg: int = max(1, int(seg_w / PANEL_W))
+		var per_w: float = seg_w / float(n_seg)
+		for i in range(n_seg):
+			var x_panel: float = seg_a + (float(i) + 0.5) * per_w
+			var col: Color = wall_color if (i % 2 == 0) else wall_dark
+			_make_box(parent, Vector3(per_w * 0.95, wall_h, 0.40),
+				Vector3(x_panel, wall_h * 0.5, _WORLD_SOUTH), col)
+		_make_box(parent, Vector3(seg_w - 0.1, 0.10, 0.55),
+			Vector3((seg_a + seg_b) * 0.5, wall_h + 0.05, _WORLD_SOUTH),
+			trim_color)
+
+	# Tall gate posts on either side of the gap — dark, with a small
+	# light cap so they read like real entrance pylons.
+	for px: float in [_WORLD_GATE_X - _WORLD_GATE_W * 0.5,
+			_WORLD_GATE_X + _WORLD_GATE_W * 0.5]:
+		_make_box(parent, Vector3(0.60, wall_h * 1.6, 0.60),
+			Vector3(px, wall_h * 0.80, _WORLD_SOUTH), post_color)
+		_make_box(parent, Vector3(0.80, 0.20, 0.80),
+			Vector3(px, wall_h * 1.6 + 0.10, _WORLD_SOUTH), trim_color)
 
 
 func _build_approach_road(parent: Node3D) -> void:
@@ -2072,28 +2186,87 @@ func _pick_plaza_spot() -> Vector3:
 
 # Mesh builders -------------------------------------------------------------
 func _build_visitor_car(col: Color) -> Node3D:
+	# Body
 	var car_mesh := MeshInstance3D.new()
 	var bm := BoxMesh.new()
 	bm.size = Vector3(1.6, 0.55, 3.2)
 	car_mesh.mesh = bm
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = col
-	mat.metallic = 0.4
-	mat.roughness = 0.5
+	mat.metallic = 0.5
+	mat.roughness = 0.4
 	car_mesh.material_override = mat
 	_traffic_holder.add_child(car_mesh)
-	# Cabin
+
+	# Cabin / roof — slightly narrower than the body, set back so the
+	# bonnet pokes out in front (real-car silhouette).
 	var cabin := MeshInstance3D.new()
 	var cbm := BoxMesh.new()
-	cbm.size = Vector3(1.4, 0.45, 1.6)
+	cbm.size = Vector3(1.42, 0.45, 1.6)
 	cabin.mesh = cbm
 	var cmat := StandardMaterial3D.new()
 	cmat.albedo_color = Color(0.12, 0.14, 0.18)
-	cmat.roughness = 0.3
+	cmat.metallic = 0.7
+	cmat.roughness = 0.25
 	cabin.material_override = cmat
 	cabin.position = Vector3(0, 0.45, 0.1)
 	car_mesh.add_child(cabin)
-	# Wheels
+
+	# Front windshield band (lighter than cabin, glassy).
+	var windshield := MeshInstance3D.new()
+	var wsbm := BoxMesh.new()
+	wsbm.size = Vector3(1.28, 0.32, 0.10)
+	windshield.mesh = wsbm
+	var wsm := StandardMaterial3D.new()
+	wsm.albedo_color = Color(0.55, 0.70, 0.85)
+	wsm.metallic = 0.85
+	wsm.roughness = 0.10
+	wsm.emission_enabled = true
+	wsm.emission = Color(0.30, 0.45, 0.65)
+	wsm.emission_energy_multiplier = 0.3
+	windshield.material_override = wsm
+	windshield.position = Vector3(0, 0.40, -0.70)
+	car_mesh.add_child(windshield)
+
+	# Rear window — same look on the back.
+	var rear_window := MeshInstance3D.new()
+	var rwbm := BoxMesh.new()
+	rwbm.size = Vector3(1.28, 0.30, 0.10)
+	rear_window.mesh = rwbm
+	rear_window.material_override = wsm
+	rear_window.position = Vector3(0, 0.40, 0.90)
+	car_mesh.add_child(rear_window)
+
+	# Headlights — two bright forward-facing pads.
+	for hx: float in [-0.55, 0.55]:
+		var hl := MeshInstance3D.new()
+		var hbm := BoxMesh.new()
+		hbm.size = Vector3(0.30, 0.18, 0.06)
+		hl.mesh = hbm
+		var hm := StandardMaterial3D.new()
+		hm.albedo_color = Color(1.00, 0.97, 0.85)
+		hm.emission_enabled = true
+		hm.emission = Color(1.00, 0.95, 0.78)
+		hm.emission_energy_multiplier = 1.6
+		hl.material_override = hm
+		hl.position = Vector3(hx, 0.05, -1.62)
+		car_mesh.add_child(hl)
+	# Taillights — red, slightly smaller.
+	for tx: float in [-0.60, 0.60]:
+		var tl := MeshInstance3D.new()
+		var tbm := BoxMesh.new()
+		tbm.size = Vector3(0.26, 0.14, 0.06)
+		tl.mesh = tbm
+		var tm := StandardMaterial3D.new()
+		tm.albedo_color = Color(0.95, 0.20, 0.20)
+		tm.emission_enabled = true
+		tm.emission = Color(0.95, 0.22, 0.22)
+		tm.emission_energy_multiplier = 1.0
+		tl.material_override = tm
+		tl.position = Vector3(tx, 0.08, 1.62)
+		car_mesh.add_child(tl)
+
+	# Wheels with a darker rim ring on top.
 	for off: Vector3 in [
 		Vector3( 0.85, -0.18,  1.10),
 		Vector3( 0.85, -0.18, -1.10),
@@ -2107,7 +2280,7 @@ func _build_visitor_car(col: Color) -> Node3D:
 		cyl.height = 0.16
 		wheel.mesh = cyl
 		var wmat := StandardMaterial3D.new()
-		wmat.albedo_color = Color(0.10, 0.10, 0.12)
+		wmat.albedo_color = Color(0.08, 0.08, 0.10)
 		wmat.roughness = 0.85
 		wheel.material_override = wmat
 		wheel.position = off
